@@ -1,0 +1,20 @@
+[
+  {
+    "name": "cc-by",
+    "allow_raw_exports": true,
+    "restricted_fields": [],
+    "notes": "Creative Commons Attribution license"
+  },
+  {
+    "name": "snomed",
+    "allow_raw_exports": false,
+    "restricted_fields": ["pref_label", "definition"],
+    "notes": "SNOMED CT redistribution restrictions"
+  },
+  {
+    "name": "cc0",
+    "allow_raw_exports": true,
+    "restricted_fields": [],
+    "notes": "Creative Commons Zero license"
+  }
+]

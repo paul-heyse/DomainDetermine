@@ -1,9 +1,50 @@
 [project]
-name = "yourpkg"
+name = "DomainDetermine"
 version = "0.1.0"
-description = "Replace me in scripts/init.sh"
+description = "DomainDetermine"
 readme = "README.md"
-requires-python = ">=3.12"
+dependencies = [
+    "SPARQLWrapper",
+    "allpairspy",
+    "black",
+    "duckdb",
+    "faiss-cpu",
+    "fastapi",
+    "httpx",
+    "jsonschema",
+    "krippendorff",
+    "matplotlib",
+    "numpy",
+    "obonet",
+    "ortools",
+    "owlready2",
+    "pandas",
+    "pandera",
+    "plotly",
+    "pronto",
+    "pulp",
+    "pyarrow",
+    "pydantic",
+    "pyjwt",
+    "pyshacl",
+    "pytest",
+    "python-json-logger",
+    "rapidfuzz",
+    "rdflib",
+    "rich",
+    "ruff",
+    "scikit-learn",
+    "scipy",
+    "sentence-transformers",
+    "SPARQLWrapper",
+    "spacy",
+    "statsmodels",
+    "tenacity",
+    "typer[all]",
+    "uvicorn",
+    "tensorrt-llm",
+]
+
 
 [tool.black]
 line-length = 100

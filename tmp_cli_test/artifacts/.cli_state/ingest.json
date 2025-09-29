@@ -1,0 +1,11 @@
+{
+  "tmp_cli_test/sources.json": {
+    "artifact": "/home/paul/DomainDetermine/tmp_cli_test/artifacts/ingest/sources.json",
+    "fingerprint": "3b6d00838d082fabee171a75cf88aec86aff7f4d81b77112e7fbf6ec7c9c3cbf",
+    "payload": {
+      "context": "dev",
+      "source": "tmp_cli_test/sources.json",
+      "source_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    }
+  }
+}

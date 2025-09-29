@@ -1,0 +1,6 @@
+
+default_context = "dev"
+
+[contexts.dev]
+artifact_root = "./artifacts"
+registry_url = "https://registry.dev"
