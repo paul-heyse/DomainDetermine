@@ -45,6 +45,14 @@ dependencies = [
     "transformers",
     "typer[all]",
     "uvicorn",
+    "nicegui",
+    "pydantic-settings",
+    "fastapi-websocket-pubsub",
+    "sqlitedict",
+    "redis",
+    "fastapi-utils",
+    "flask",
+    "flask-cors",
 ]
 
 

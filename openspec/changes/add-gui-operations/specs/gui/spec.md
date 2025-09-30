@@ -2,7 +2,7 @@
 
 ### Requirement: Reviewer Workbench
 
-The GUI SHALL include a reviewer workbench consolidating mapping adjudications, overlay approvals, eval failure reviews, readiness waivers, and prompt pack calibration checks with evidence context, keyboard navigation, offline resilience, and batch operations.
+The GUI SHALL include a reviewer workbench—built with NiceGUI components backed by FastAPI services—consolidating mapping adjudications, overlay approvals, eval failure reviews, readiness waivers, and prompt pack calibration checks with evidence context, keyboard navigation, offline resilience, and batch operations.
 
 #### Scenario: Mapping reviewer adjudicates case
 
@@ -16,7 +16,7 @@ The GUI SHALL include a reviewer workbench consolidating mapping adjudications, 
 
 ### Requirement: Governance & Waiver Management
 
-The GUI SHALL expose governance workflows (waiver submission, approval, manifest signing, rollout/rollback, delegated approvals) with RBAC enforcement, audit logging, and feature-flagged rollout per tenant.
+The GUI SHALL expose governance workflows (waiver submission, approval, manifest signing, rollout/rollback, delegated approvals) with RBAC enforcement, audit logging, and feature-flagged rollout per tenant, delivered through Python-native UI components and FastAPI adapters.
 
 #### Scenario: Approve coverage certificate waiver
 
@@ -30,7 +30,7 @@ The GUI SHALL expose governance workflows (waiver submission, approval, manifest
 
 ### Requirement: Observability Dashboards
 
-The GUI SHALL surface operational dashboards for LLM usage, job queue health, readiness gates, cost tracking, security alerts, SOC incidents, and reviewer throughput, supporting alert thresholds, integrations (PagerDuty/Slack), and drill-down to raw logs.
+The GUI SHALL surface operational dashboards—implemented with NiceGUI visualization components and FastAPI data adapters—for LLM usage, job queue health, readiness gates, cost tracking, security alerts, SOC incidents, and reviewer throughput, supporting alert thresholds, integrations (PagerDuty/Slack), and drill-down to raw logs.
 
 #### Scenario: LLM cost overrun alert
 
@@ -49,7 +49,7 @@ The GUI SHALL surface operational dashboards for LLM usage, job queue health, re
 
 ### Requirement: Deployment, Automation & Release Controls
 
-Operations SHALL provide automated deployment pipelines (CI/CD) with blue-green/canary release support, feature flag management, automation/webhook hooks, health checks, rollback scripts, disaster recovery procedures, and documentation accessible within the GUI.
+Operations SHALL provide automated deployment pipelines (CI/CD) with blue-green/canary release support, feature flag management, automation/webhook hooks, health checks, rollback scripts, disaster recovery procedures, and documentation accessible within the Python-native GUI.
 
 #### Scenario: GUI release pipeline executed
 
@@ -63,7 +63,7 @@ Operations SHALL provide automated deployment pipelines (CI/CD) with blue-green/
 
 ### Requirement: Security, Compliance & Retention
 
-The GUI SHALL enforce session security (MFA, inactivity timeout, device fingerprinting, audit trails), track compliance status per tenant, surface security alerts to administrators, integrate with SOC tooling, and enforce retention/archival policies for GUI-generated artifacts (annotations, decisions, incident notes).
+The GUI SHALL enforce session security (MFA, inactivity timeout, device fingerprinting, audit trails), track compliance status per tenant, surface security alerts to administrators, integrate with SOC tooling, and enforce retention/archival policies for GUI-generated artifacts (annotations, decisions, incident notes) using Python middleware and libraries.
 
 #### Scenario: Session timeout handling
 
@@ -82,7 +82,7 @@ The GUI SHALL enforce session security (MFA, inactivity timeout, device fingerpr
 
 ### Requirement: Incident Management & Runbooks
 
-The GUI SHALL provide an incident workspace aggregating alerts, playbooks, and mitigation actions, integrating with SOC systems (SIEM, ticketing) for escalation, acknowledgement, and post-incident reviews.
+The GUI SHALL provide an incident workspace—implemented via Python-native components—aggregating alerts, playbooks, and mitigation actions, integrating with SOC systems (SIEM, ticketing) for escalation, acknowledgement, and post-incident reviews.
 
 #### Scenario: Incident escalation workflow
 
@@ -91,7 +91,7 @@ The GUI SHALL provide an incident workspace aggregating alerts, playbooks, and m
 
 ### Requirement: Training, Onboarding & Automation Hooks
 
-The GUI SHALL embed contextual help, runbook links, guided tours, automation hooks (copy-as-CLI, webhooks), and onboarding experiences for operators, ensuring parity with CLI automation and capturing training acknowledgements.
+The GUI SHALL embed contextual help, runbook links, guided tours, automation hooks (copy-as-CLI, webhooks), and onboarding experiences for operators—implemented within Python-native frameworks—ensuring parity with CLI automation and capturing training acknowledgements.
 
 #### Scenario: Reviewer opens runbook
 

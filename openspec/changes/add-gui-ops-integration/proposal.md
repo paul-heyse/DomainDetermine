@@ -1,13 +1,16 @@
 ## Why
-The GUI operations change introduces extensive reviewer, observability, and governance workflows, but it relies on cross-system integrations (ticketing, chatops, SOAR/SIEM, cost analytics, readiness pipelines) that require explicit adapters and policies. A dedicated change is needed to define integration contracts, automation hooks, and runbook synchronization so the GUI can interoperate with external operational tooling and existing Python automation scripts.
+
+The GUI operations suite depends on integrations with external tooling (ticketing, chatops, SIEM, cost analytics). To keep the implementation cohesive, we will build these connectors in Python, leveraging FastAPI clients, webhook handlers, and Python SDKs so the NiceGUI front end can orchestrate workflows without leaving our stack. A dedicated change is needed to define contracts, automation hooks, and configuration policies for these Python integrations.
 
 ## What Changes
-- Define integration contracts for incident/ticketing systems (e.g., PagerDuty, Jira), chatops (Slack/Teams), SIEM/SOC feeds, and cost analytics to allow GUI dashboards and workbenches to automate escalation and reporting.
+
+- Define integration contracts for incident/ticketing systems, chatops, SIEM/SOC feeds, and cost analytics, implemented via Python HTTP/webhook clients and FastAPI endpoints used by the GUI.
 - Establish webhook/event schemas and command templates for GUI-triggered automations, ensuring parity with CLI scripts and governance runbooks.
-- Provide configuration and secret management guidelines for external tool connectors, including per-tenant overrides and feature flag gating.
-- Document operational runbooks, SOP synchronization, versioning, and training flows between GUI and external knowledge bases.
-- Extend observability and compliance reporting pipelines to collect GUI-specific metrics, alert acknowledgements, and incident outcomes, feeding both GUI and external systems.
+- Provide configuration and secret management guidelines for integration connectors (per-tenant settings, feature flags) managed via Python configuration libraries.
+- Implement automated runbook synchronization so the GUI stays aligned with external knowledge bases, tracking version parity, auditing access, and surfacing sync status to operators.
+- Extend observability and compliance reporting pipelines to capture GUI integration activity (via Python logging/OpenTelemetry) and share events with external systems.
 
 ## Impact
+
 - Affected specs: `gui`, `service`, `governance`, `readiness`, `prompt-pack`, operations documentation.
-- Affected code: integration adapters (webhooks, chatops connectors, ticketing clients), configuration templates, documentation updates, automation scripts, secret management policies.
+- Affected code: Python integration adapters (FastAPI webhooks, slack_sdk, atlassian-python-api, opsgenie-sdk, etc.), configuration templates, documentation updates, automation scripts, secret management policies.

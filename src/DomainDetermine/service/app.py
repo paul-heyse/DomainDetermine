@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 
 from DomainDetermine.governance.event_log import GovernanceEventLog, GovernanceEventType
+from DomainDetermine.gui import create_app as create_gui_app
 
 from .auth import AuthContext, get_auth_context, require_roles
 from .events import alert_quota_violation, emit_job_event
@@ -268,5 +269,8 @@ def create_app(
                 )
             )
         return responses
+
+    gui_app = DomainDetermine.gui.create_app()
+    app.mount("/gui", gui_app)
 
     return app

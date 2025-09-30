@@ -1,0 +1,24 @@
+version: "3.8"
+services:
+  triton:
+    image: "nvcr.io/nvidia/tritonserver:24.05-py3"
+    restart: unless-stopped
+    network_mode: host
+    runtime: nvidia
+    environment:
+      - TZ=UTC
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ../cache:/models:ro
+      - ../state:/state
+      - ../logs:/var/log/llm-demo
+    command: >-
+      tritonserver
+      --model-repository=/models
+      --http-port=8000
+      --grpc-port=8001
+      --metrics-port=8002
+      --allow-gpu-metrics=true
+      --exit-on-error=false

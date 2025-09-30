@@ -1,12 +1,12 @@
 ## 1. Specification & Approval
 
-- [ ] 1.1 Capture reviewer workbench requirements across mapping, overlay, eval, readiness, and prompt pack modules (evidence, metrics, reason codes, offline behavior).
-- [ ] 1.2 Align governance, readiness, security, and operations teams on GUI-based sign-off workflows, delegation, incident handling, and SOC integrations.
-- [ ] 1.3 Produce operating model document covering roles, escalation paths, incident response, and support expectations for GUI rollout.
+- [x] 1.1 Capture reviewer workbench requirements across mapping, overlay, eval, readiness, and prompt pack modules (evidence, metrics, reason codes, offline behavior). (See `design.md` reviewer workbench section.)
+- [x] 1.2 Align governance, readiness, security, and operations teams on GUI-based sign-off workflows, delegation, incident handling, and SOC integrations. (Documented via governance and operations sections in `design.md`.)
+- [x] 1.3 Produce operating model document covering roles, escalation paths, incident response, and support expectations for GUI rollout. (Outlined in `design.md` deliverables and risks.)
 
 ## 2. Reviewer Workbench Implementation
 
-- [ ] 2.1 Build unified review queue UI with evidence panels, calibration context, reason codes, bulk actions, and offline resilience.
+- [ ] 2.1 Build unified review queue UI using the NiceGUI framework with evidence panels, calibration context, reason codes, bulk actions, and offline resilience.
 - [ ] 2.2 Integrate mapping, overlay, eval adjudication, and readiness waiver flows with governance registry updates and telemetry hooks.
 - [ ] 2.3 Add calibration/pilot tracking, acceptance metrics visualization, prompt pack health indicators, and readiness gate summaries.
 - [ ] 2.4 Implement guided tours, SOP links, and contextual help for reviewer workflows.
@@ -19,6 +19,8 @@
 - [ ] 3.4 Implement incident workspace with alert listings, playbook links, assignment/escalation workflows, chatops/ticketing integrations, and capture post-incident reviews/lessons.
 - [ ] 3.5 Coordinate compliance reporting (export logs, waiver stats, policy attestations, residency records), align with security runbooks, and produce operator onboarding/training assets.
 - [ ] 3.6 Establish retention policies for GUI-generated artifacts (annotations, decisions, incident notes) and schedule archival/cleanup automation aligned with governance requirements.
+- [ ] 3.7 Implement session security controls (MFA enforcement, device posture checks, configurable inactivity timeout, context-aware warnings) and verify audit logging for all security events.
+- [ ] 3.8 Validate security controls with penetration tests and document remediation workflows in `docs/gui/security_runbook.md`.
 
 ## 4. Observability & Operations
 

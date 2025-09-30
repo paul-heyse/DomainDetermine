@@ -1,0 +1,33 @@
+# Machine-readable prerequisite definition for the llm-demo warmup
+hardware:
+  gpu_architectures:
+    - "sm_89"
+    - "sm_90"
+  min_vram_gb: 80
+  min_driver_version: "555.00"
+software:
+  cuda:
+    min_version: "12.4"
+  tensorrt:
+    min_version: "10.1"
+  triton:
+    min_version: "24.05"
+    image: "nvcr.io/nvidia/tritonserver:24.05-py3"
+commands:
+  required:
+    - name: "nvidia-smi"
+    - name: "trtllm-build"
+    - name: "tritonserver"
+  optional:
+    - name: "docker"
+    - name: "docker compose"
+    - name: "kubectl"
+environment:
+  required:
+    - name: "HF_TOKEN"
+      description: "Hugging Face token with read access (omit if model is public)"
+      optional: true
+files:
+  optional:
+    - path: "/etc/nvidia-container-runtime/config.toml"
+      description: "Presence indicates NVIDIA container toolkit is configured"

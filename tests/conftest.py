@@ -11,6 +11,10 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+LLM_SRC = ROOT / "llm-demo" / "src"
+if LLM_SRC.exists() and str(LLM_SRC) not in sys.path:
+    sys.path.insert(0, str(LLM_SRC))
+
 import pytest  # noqa: E402
 
 from DomainDetermine.readiness.models import SuiteConfig, SuiteThresholds, SuiteType  # noqa: E402

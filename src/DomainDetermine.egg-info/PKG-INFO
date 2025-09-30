@@ -44,6 +44,14 @@ Requires-Dist: tenacity
 Requires-Dist: transformers
 Requires-Dist: typer[all]
 Requires-Dist: uvicorn
+Requires-Dist: nicegui
+Requires-Dist: pydantic-settings
+Requires-Dist: fastapi-websocket-pubsub
+Requires-Dist: sqlitedict
+Requires-Dist: redis
+Requires-Dist: fastapi-utils
+Requires-Dist: flask
+Requires-Dist: flask-cors
 Provides-Extra: dev
 Requires-Dist: black; extra == "dev"
 Requires-Dist: mypy; extra == "dev"

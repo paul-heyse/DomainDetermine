@@ -1,0 +1,42 @@
+model:
+  provider: "huggingface"
+  identifier: "Qwen/Qwen2-0.5B-Instruct"
+  revision: "main"
+  tokenizer: "Qwen/Qwen2-0.5B-Instruct"
+  precision: "fp16"
+  tensor_rt_llm:
+    max_batch_size: 4
+    max_input_len: 4096
+    max_output_len: 1024
+    builder_optimization_level: 4
+    workspace_size_gb: 40
+    parallel_build: true
+    extra_flags:
+      - "--enable_weight_only"
+  cache:
+    ttl_hours: 48
+    path: "../cache"
+  offline_mode: false
+  dry_run: true
+  requires_auth: true
+  warmup_prompts:
+    - "You are a domain reasoning assistant. Briefly introduce yourself."
+  golden_sample:
+    prompt: "Summarize the primary mission of DomainDetermine in one sentence."
+    expected_substring: "auditable"
+    tolerance: 0.1
+  endpoints:
+    http: "http://127.0.0.1:8000/v2/models/llm/infer"
+    grpc: "127.0.0.1:8001"
+    metrics: "http://127.0.0.1:8002/metrics"
+  launch:
+    mode: "docker_compose"
+    compose_file: "config/docker-compose.yml"
+    env:
+      NVIDIA_VISIBLE_DEVICES: "all"
+      HF_TOKEN: "${HF_TOKEN}"
+    health_timeout_s: 300
+  redaction_patterns:
+    - "token"
+    - "apikey"
+    - "secret"

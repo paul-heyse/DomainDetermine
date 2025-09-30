@@ -2,7 +2,7 @@
 
 ### Requirement: Module Workspaces
 
-The GUI SHALL provide dedicated workspaces for each DomainDetermine capability (Module 1 KOS ingestion, Module 2 coverage planner, Module 3 mapping, Module 4 overlay, Module 5 auditor, Module 6 eval generator, readiness operations, prompt pack stewardship, governance registry, service operations) enabling full task execution without CLI access while preserving module guardrails, SLAs, and governance checkpoints.
+The GUI SHALL provide dedicated workspaces—implemented with NiceGUI components backed by FastAPI services—for each DomainDetermine capability (Module 1 KOS ingestion, Module 2 coverage planner, Module 3 mapping, Module 4 overlay, Module 5 auditor, Module 6 eval generator, readiness operations, prompt pack stewardship, governance registry, service operations) enabling full task execution without CLI access while preserving module guardrails, SLAs, and governance checkpoints.
 
 #### Scenario: Launch ingestion workspace
 
@@ -46,7 +46,7 @@ The GUI SHALL provide dedicated workspaces for each DomainDetermine capability (
 
 ### Requirement: Workspace-Oriented APIs & Data Contracts
 
-Backend services SHALL expose workspace-oriented APIs (REST/GraphQL/websocket/search) delivering module-specific data (concept trees, quotas, mapping batches, overlay proposals, audit findings, eval suites, readiness scorecards, prompt metrics, service health) with tenant scoping, caching, audit metadata, schema versioning, idempotent mutations, and alignment with existing Python data contracts.
+Backend services SHALL expose workspace-oriented APIs (REST/GraphQL/websocket/search)—constructed with Python tooling such as FastAPI/Pydantic—delivering module-specific data (concept trees, quotas, mapping batches, overlay proposals, audit findings, eval suites, readiness scorecards, prompt metrics, service health) with tenant scoping, caching, audit metadata, schema versioning, idempotent mutations, and alignment with existing Python data contracts.
 
 #### Scenario: Coverage planner data fetch
 
@@ -65,7 +65,7 @@ Backend services SHALL expose workspace-oriented APIs (REST/GraphQL/websocket/se
 
 ### Requirement: Job Orchestration, Event Streams & Automation Hooks
 
-The GUI SHALL orchestrate long-running jobs (ingest, plan, audit, eval, readiness pipelines, prompt warmups, release processes) via GUI controls, presenting statuses, logs, lineage pins, dependency graphs, SLA timers, automation webhooks, and retry/rollback actions with configurable alerting. Services SHALL publish job/event streams consumable by the GUI and CLI to preserve parity.
+The GUI SHALL orchestrate long-running jobs (ingest, plan, audit, eval, readiness pipelines, prompt warmups, release processes) via Python-native GUI controls, presenting statuses, logs, lineage pins, dependency graphs, SLA timers, automation webhooks, and retry/rollback actions with configurable alerting. Services SHALL publish job/event streams consumable by the GUI and CLI to preserve parity.
 
 #### Scenario: Retry coverage plan build
 
@@ -84,7 +84,7 @@ The GUI SHALL orchestrate long-running jobs (ingest, plan, audit, eval, readines
 
 ### Requirement: Artifact Diff, Versioning, Drift Detection & Search
 
-Each workspace SHALL expose side-by-side diffs, version history, drift detection alerts, search/tagging, annotation workflows, and promotion pipelines for module artifacts (snapshots, plans, mappings, overlay nodes, prompt pack releases, certificates, suites, readiness scorecards) referencing governance manifests and dependency graphs while honoring CLI storage conventions.
+Each workspace SHALL expose side-by-side diffs, version history, drift detection alerts, search/tagging, annotation workflows, and promotion pipelines for module artifacts (snapshots, plans, mappings, overlay nodes, prompt pack releases, certificates, suites, readiness scorecards) referencing governance manifests and dependency graphs while honoring CLI storage conventions—implemented using Python visualization/search components.
 
 #### Scenario: Compare coverage plan versions
 
@@ -93,7 +93,7 @@ Each workspace SHALL expose side-by-side diffs, version history, drift detection
 
 ### Requirement: Prompt Pack & LLM Integration
 
-Workspaces relying on LLMs SHALL integrate prompt pack metadata, schema versions, calibration sets, warm-up status, quota/latency/cost telemetry, guardrails configuration, and failure taxonomies while enabling manual warm-ups, overrides, or rollbacks with audit logging and alignment to prompt pack runtime APIs.
+Workspaces relying on LLMs SHALL integrate prompt pack metadata, schema versions, calibration sets, warm-up status, quota/latency/cost telemetry, guardrails configuration, and failure taxonomies while enabling manual warm-ups, overrides, or rollbacks with audit logging and alignment to prompt pack runtime APIs—all surfaced via Python-native GUI components.
 
 #### Scenario: View mapping prompt health
 
@@ -131,7 +131,7 @@ Workspaces SHALL surface governance checkpoints (waivers, approvals, readiness g
 
 ### Requirement: Notification & Event Aggregation
 
-The GUI SHALL ingest governance, readiness, service, prompt pack, and cost events into a normalized notification pipeline supporting acknowledgement, snoozing, escalation, and routing rules while retaining audit trails and parity with CLI alerts.
+The GUI SHALL ingest governance, readiness, service, prompt pack, and cost events into a normalized notification pipeline—built using Python event clients and components—supporting acknowledgement, snoozing, escalation, and routing rules while retaining audit trails and parity with CLI alerts.
 
 #### Scenario: Notification acknowledgement workflow
 
@@ -203,3 +203,12 @@ Workspaces SHALL provide shareable deep links capturing filters, selections, tim
 
 - **WHEN** multiple reviewers comment on an artifact via a deep link
 - **THEN** the GUI SHALL synchronize the annotation thread, show presence indicators, and reconcile edits via conflict-handling rules while persisting comments to the governance record.
+
+### Requirement: Prototype & Fixture Assets Committed
+
+The project SHALL maintain NiceGUI prototype modules under `prototype/` and fixture datasets under `tests/fixtures/gui/`, ensuring they align with workspace interaction models and can be executed via documented commands for usability testing and contract validation.
+
+#### Scenario: Run prototype for workspace review
+
+- **WHEN** a designer runs `micromamba run -p ./.venv python prototype/main.py`
+- **THEN** they SHALL load prototype views for each workspace using the checked-in fixtures, enabling usability walkthroughs and contract tests without additional scaffolding.
