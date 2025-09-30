@@ -3,13 +3,16 @@ Name: DomainDetermine
 Version: 0.1.0
 Summary: DomainDetermine
 Description-Content-Type: text/markdown
+Requires-Dist: dash
+Requires-Dist: anyio
+Requires-Dist: hypothesis
+Requires-Dist: pluggy
+Requires-Dist: typeguard
 Requires-Dist: SPARQLWrapper
 Requires-Dist: allpairspy
-Requires-Dist: black
 Requires-Dist: duckdb
 Requires-Dist: faiss-cpu
 Requires-Dist: fastapi
-Requires-Dist: great-expectations
 Requires-Dist: httpx
 Requires-Dist: jsonschema
 Requires-Dist: krippendorff
@@ -26,23 +29,37 @@ Requires-Dist: pulp
 Requires-Dist: pyarrow
 Requires-Dist: pydantic
 Requires-Dist: pyjwt
+Requires-Dist: pyyaml
 Requires-Dist: pyshacl
-Requires-Dist: pytest
 Requires-Dist: python-json-logger
 Requires-Dist: rapidfuzz
 Requires-Dist: rdflib
 Requires-Dist: rich
-Requires-Dist: ruff
 Requires-Dist: scikit-learn
 Requires-Dist: scipy
 Requires-Dist: sentence-transformers
-Requires-Dist: SPARQLWrapper
 Requires-Dist: spacy
 Requires-Dist: statsmodels
 Requires-Dist: tenacity
+Requires-Dist: transformers
 Requires-Dist: typer[all]
 Requires-Dist: uvicorn
-Requires-Dist: tensorrt-llm
+Provides-Extra: dev
+Requires-Dist: black; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: pre-commit; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Provides-Extra: service
+Requires-Dist: opentelemetry-api; extra == "service"
+Requires-Dist: opentelemetry-exporter-otlp; extra == "service"
+Requires-Dist: opentelemetry-sdk; extra == "service"
+Provides-Extra: docs
+Requires-Dist: mkdocs; extra == "docs"
+Requires-Dist: mkdocs-material; extra == "docs"
+Provides-Extra: llm
+Requires-Dist: tensorrt-llm; extra == "llm"
 
 # DomainDetermine
 
@@ -66,6 +83,8 @@ pytest -q
 ruff check src tests
 black .
 ```
+
+See `docs/dependencies.md` for environment bootstrap instructions, optional extras, and installation commands (`pip install -e .[dev,service]`).
 
 ## Key Concepts
 

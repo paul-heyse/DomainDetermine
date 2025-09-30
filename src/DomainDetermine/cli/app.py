@@ -5,19 +5,31 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 import typer
+
+# Prompt governance utilities
+from DomainDetermine.governance.event_log import GovernanceEventLog
+from DomainDetermine.governance.versioning import ChangeImpact
+from DomainDetermine.prompt_pack.registry import (
+    PromptManifest,
+    PromptRegistry,
+    PromptRegistryError,
+)
+from DomainDetermine.prompt_pack.versioning import PromptVersionManager
 
 from .config import ResolvedConfig, load_cli_config, write_current_context
 from .logging import configure_logging
 from .operations import CommandRuntime, OperationExecutor, build_runtime
-from .plugins import PluginExecutionError, registry as plugin_registry
+from .plugins import PluginExecutionError, describe_plugin_trust
+from .plugins import registry as plugin_registry
 from .profiles import (
     PATH_ARGUMENT_KEYS,
     ensure_version_compat,
     load_profile,
     resolve_profile_path,
+    validate_profile,
 )
 from .safety import (
     PreflightChecks,
@@ -27,16 +39,20 @@ from .safety import (
     validate_credentials_reference,
 )
 
+# Mapping pipeline integration is optional and configured via register_mapping_pipeline_builder.
+
 CLI_VERSION = "0.1.0"
 
 app = typer.Typer(help="DomainDetermine command line interface")
 context_app = typer.Typer(help="Manage CLI contexts")
 plugins_app = typer.Typer(help="Inspect and manage CLI plugins")
 profile_app = typer.Typer(help="Execute bundled CLI profiles")
+prompt_app = typer.Typer(help="Prompt pack governance operations")
 
 app.add_typer(context_app, name="context")
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(profile_app, name="profile")
+app.add_typer(prompt_app, name="prompt")
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +179,162 @@ def _command_callable(verb: str) -> Callable[..., Any]:
 
 
 # ---------------------------------------------------------------------------
+# Prompt governance commands
+# ---------------------------------------------------------------------------
+
+
+@prompt_app.command("bump-version")
+def bump_prompt_version(
+    template_id: str = typer.Argument(..., help="Prompt template identifier."),
+    impact: ChangeImpact = typer.Option(
+        ..., "--impact", help="Semantic impact classification (major/minor/patch)."
+    ),
+    rationale: str = typer.Option(
+        ..., "--rationale", help="Summary of the change rationale."
+    ),
+    owners: List[str] = typer.Option(
+        [], "--owner", help="Owner or DRI responsible for the change.", show_default=False
+    ),
+    metrics: Optional[str] = typer.Option(
+        None,
+        "--metrics",
+        help="JSON object describing expected metric deltas (e.g. '{\"grounding_fidelity\": 0.02}').",
+    ),
+    approvals: List[str] = typer.Option(
+        [], "--approval", help="Recorded approvals for the release.", show_default=False
+    ),
+    related_manifests: List[str] = typer.Option(
+        [],
+        "--manifest",
+        help="Related governance manifest identifiers to link with this prompt release.",
+        show_default=False,
+    ),
+    prompt_root: Path = typer.Option(
+        Path("src/DomainDetermine/prompt_pack"),
+        "--root",
+        help="Prompt pack root directory containing templates, schemas, and policies.",
+        show_default=True,
+    ),
+    changelog_path: Path = typer.Option(
+        Path("docs/prompt_pack/CHANGELOG.md"),
+        "--changelog",
+        help="Markdown changelog path to append release entries.",
+        show_default=True,
+    ),
+    journal_path: Path = typer.Option(
+        Path("docs/prompt_pack/releases.jsonl"),
+        "--journal",
+        help="JSONL journal recording structured prompt releases.",
+        show_default=True,
+    ),
+    event_log_path: Optional[Path] = typer.Option(
+        None,
+        "--event-log",
+        help="Optional governance event log file for prompt lifecycle events.",
+    ),
+    actor: str = typer.Option(
+        "prompt-governance",
+        "--actor",
+        help="Actor recorded for governance events.",
+        show_default=True,
+    ),
+) -> None:
+    """Validate, hash, and log a prompt version bump."""
+
+    expected_metrics = _parse_metrics(metrics)
+    registry = _load_prompt_registry(prompt_root, journal_path)
+    event_log: Optional[GovernanceEventLog] = None
+    if event_log_path is not None:
+        try:
+            event_log = GovernanceEventLog(event_log_path)
+        except ValueError as exc:
+            typer.echo(f"[error] unable to initialise governance event log: {exc}")
+            raise typer.Exit(code=1)
+
+    manager = PromptVersionManager(
+        prompt_root,
+        registry,
+        changelog_path=changelog_path,
+        journal_path=journal_path,
+        event_log=event_log,
+    )
+    try:
+        manifest = manager.publish(
+            template_id,
+            impact=impact,
+            rationale=rationale,
+            owners=owners,
+            expected_metrics=expected_metrics,
+            approvals=approvals,
+            actor=actor,
+            related_manifests=related_manifests,
+        )
+    except (PromptRegistryError, FileNotFoundError) as exc:
+        typer.echo(f"[error] {exc}")
+        raise typer.Exit(code=1)
+
+    reference = manager.reference(manifest)
+    typer.echo(
+        json.dumps(
+            {
+                "template_id": manifest.template_id,
+                "version": manifest.version,
+                "hash": manifest.hash,
+                "reference": reference,
+                "changelog": str(changelog_path),
+                "journal": str(journal_path),
+                "event_log": str(event_log_path) if event_log_path else None,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+def _load_prompt_registry(prompt_root: Path, journal_path: Optional[Path]) -> PromptRegistry:
+    """Initialise a prompt registry with optional historical records."""
+
+    registry = PromptRegistry()
+    if journal_path and journal_path.exists():
+        with journal_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                raw = line.strip()
+                if not raw:
+                    continue
+                try:
+                    record = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                template_id = record.get("template_id")
+                version = record.get("version")
+                hash_value = record.get("hash")
+                if not (template_id and version and hash_value):
+                    continue
+                schema_id = record.get("schema_id", "unknown")
+                policy_id = record.get("policy_id", "unknown")
+                manifest = PromptManifest(
+                    template_id=template_id,
+                    version=version,
+                    schema_id=schema_id,
+                    policy_id=policy_id,
+                    hash=hash_value,
+                )
+                registry.register(manifest)
+    return registry
+
+
+def _parse_metrics(payload: Optional[str]) -> Mapping[str, object]:
+    if not payload:
+        return {}
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"Expected JSON for metrics, received error: {exc}")
+    if not isinstance(parsed, dict):
+        raise typer.BadParameter("Expected metrics to decode into a JSON object")
+    return parsed
+
+
+# ---------------------------------------------------------------------------
 # Typer callback
 # ---------------------------------------------------------------------------
 
@@ -170,47 +342,19 @@ def _command_callable(verb: str) -> Callable[..., Any]:
 @app.callback()
 def main_callback(
     ctx: typer.Context,
-    config: Optional[Path] = typer.Option(
-        None,
-        "--config",
-        help="Path to CLI configuration file (TOML or JSON).",
-    ),
-    context: Optional[str] = typer.Option(
-        None, "--context", "-c", help="Context name to activate for this invocation."
-    ),
-    artifact_root: Optional[Path] = typer.Option(
-        None,
-        "--artifact-root",
-        help="Override artifact root for this invocation.",
-    ),
-    registry_url: Optional[str] = typer.Option(
-        None,
-        "--registry-url",
-        help="Override registry URL for this invocation.",
-    ),
-    credentials_ref: Optional[str] = typer.Option(
-        None,
-        "--credentials-ref",
-        help="Override credentials reference identifier.",
-    ),
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to CLI configuration file (TOML or JSON)."),
+    context: Optional[str] = typer.Option(None, "--context", "-c", help="Context name to activate for this invocation."),
+    artifact_root: Optional[Path] = typer.Option(None, "--artifact-root", help="Override artifact root for this invocation."),
+    registry_url: Optional[str] = typer.Option(None, "--registry-url", help="Override registry URL for this invocation."),
+    credentials_ref: Optional[str] = typer.Option(None, "--credentials-ref", help="Override credentials reference identifier."),
     dry_run: bool = typer.Option(
         False,
-        "--dry-run",
+        "--dry-run/--no-dry-run",
         help="Preview changes without mutating artifacts.",
-        is_flag=True,
+        show_default=True,
     ),
-    log_format: str = typer.Option(
-        "text",
-        "--log-format",
-        help="Log format for file output (text or json).",
-    ),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help="Enable verbose logging.",
-        is_flag=True,
-    ),
+    log_format: str = typer.Option("text", "--log-format", help="Log format for file output (text or json)."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
     """Top-level callback to resolve configuration and configure logging."""
 
@@ -228,7 +372,10 @@ def main_callback(
     log_dir = resolved.artifact_root / "logs"
     log_path = log_dir / "cli.log"
     logger = configure_logging(log_path, resolved.log_format, resolved.verbose)
-    ctx.obj = {"config": resolved, "logger": logger}
+    ctx.obj = {"config": resolved, "logger": logger, "mapping_pipeline": None}
+
+    if mapping_pipeline_builder is not None:
+        ctx.obj["mapping_pipeline"] = mapping_pipeline_builder()
 
 
 # ---------------------------------------------------------------------------
@@ -297,13 +444,17 @@ def plugins_list(
     runtime = build_runtime(ctx)
     categories = [category] if category else list(plugin_registry.categories)
     for idx, cat in enumerate(categories):
-        wrappers = plugin_registry.list_plugins(cat, runtime.logger)
+        wrappers = plugin_registry.list_plugins(
+            cat, runtime.logger, runtime.config.plugin_trust
+        )
         typer.echo(f"[{cat}]")
         if not wrappers:
             typer.echo("  (none)")
         else:
             for wrapper in wrappers:
-                typer.echo(f"  - {wrapper.name} (v{wrapper.version})")
+                trust_label = describe_plugin_trust(wrapper, runtime.config.plugin_trust)
+                status_suffix = "" if trust_label == "trusted" else f" [{trust_label}]"
+                typer.echo(f"  - {wrapper.name} (v{wrapper.version}){status_suffix}")
         if idx < len(categories) - 1:
             typer.echo("")
 
@@ -321,6 +472,15 @@ def profile_run(ctx: typer.Context, identifier: str = typer.Argument(...)) -> No
     manifest_path = resolve_profile_path(runtime.config, identifier)
     manifest = load_profile(manifest_path)
     ensure_version_compat(manifest, CLI_VERSION)
+    validation_errors = validate_profile(manifest, _command_callable)
+    if validation_errors:
+        for error in validation_errors:
+            runtime.logger.error(
+                "Profile validation error",
+                extra={"profile": manifest.name, "error": error},
+            )
+        formatted = "; ".join(validation_errors)
+        raise typer.BadParameter(f"Profile manifest validation failed: {formatted}")
 
     typer.echo(f"Profile: {manifest.name}")
     typer.echo(f"Source: {manifest_path}")
@@ -453,6 +613,54 @@ def map(
 
 
 @app.command()
+def calibrate_mapping(
+    ctx: typer.Context,
+    mapping_file: Path = typer.Argument(..., help="Mapping configuration"),
+    gold: Path = typer.Argument(..., help="Calibration examples (JSONLines or JSON)"),
+) -> None:
+    runtime = build_runtime(ctx)
+    payload = {
+        "mapping_file": mapping_file,
+        "gold": gold,
+        "hash": _hash_path(gold),
+    }
+
+    def performer() -> Optional[Path]:
+        from DomainDetermine.mapping import MappingContext
+        from DomainDetermine.mapping.calibration import CalibrationExample, MappingCalibrationSuite
+
+        entries = json.loads(gold.read_text(encoding="utf-8"))
+        if isinstance(entries, dict):
+            entries = entries.get("examples", [])
+        gold_entries = [
+            CalibrationExample(
+                text=record["text"],
+                expected_concept_id=record["expected_concept_id"],
+                context=MappingContext(facets=record.get("facets", {})),
+            )
+            for record in entries
+        ]
+
+        pipeline = ctx.obj.get("mapping_pipeline")
+        if pipeline is None:
+            raise typer.BadParameter("Mapping pipeline is not configured in CLI context")
+        suite = MappingCalibrationSuite(pipeline)
+        result = suite.run(gold_entries)
+        metrics_path = runtime.artifact_root / "calibration" / f"{_slug(mapping_file.stem)}.json"
+        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "total": result.total,
+            "resolved": result.resolved,
+            "correct": result.correct,
+            "metrics": dict(result.metrics),
+        }
+        metrics_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        return metrics_path
+
+    _execute_command(ctx, "calibrate_mapping", str(mapping_file), payload, runtime=runtime, performer=performer)
+
+
+@app.command()
 def expand(
     ctx: typer.Context,
     ontology: Path = typer.Argument(..., help="Ontology expansion configuration"),
@@ -575,10 +783,17 @@ def report(
 # Entrypoint
 # ---------------------------------------------------------------------------
 
+mapping_pipeline_builder: Optional[Callable[[], object]] = None
+
+
+def register_mapping_pipeline_builder(factory: Callable[[], object]) -> None:
+    """Register a factory used to build the mapping pipeline for CLI commands."""
+
+    global mapping_pipeline_builder
+    mapping_pipeline_builder = factory
+
 
 def main() -> None:
     """Entrypoint for the CLI."""
 
     app()
-
-

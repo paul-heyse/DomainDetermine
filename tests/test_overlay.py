@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
+from DomainDetermine.llm import ProviderConfig, SchemaRecord, SchemaRegistry, TritonLLMProvider
 from DomainDetermine.overlay import (
     CandidatePipeline,
     CorpusCandidateMiner,
@@ -38,6 +41,82 @@ def provenance() -> OverlayProvenance:
         created_by="pipeline",
         created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
     )
+
+
+@pytest.fixture()
+def overlay_llm(tmp_path: Path) -> tuple[TritonLLMProvider, SchemaRegistry]:
+    schemas = SchemaRegistry(tmp_path / "schemas")
+    schemas.register(
+        SchemaRecord(
+            name="overlay_candidate",
+            version="v1",
+            description="Schema for overlay candidate proposals",
+            schema={
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "justification": {"type": "string"},
+                    "citations": {"type": "array", "items": {"type": "string"}},
+                    "annotation_prompts": {"type": "array", "items": {"type": "string"}},
+                    "difficulty": {"type": "string"},
+                    "nearest_existing": {"type": ["string", "null"]},
+                    "split_children": {"type": "array", "items": {"type": "string"}},
+                    "merge_targets": {"type": "array", "items": {"type": "string"}},
+                    "synonyms": {"type": "object"},
+                    "jurisdiction_tags": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": [
+                    "label",
+                    "justification",
+                    "citations",
+                    "annotation_prompts",
+                    "difficulty",
+                    "nearest_existing",
+                    "split_children",
+                    "merge_targets",
+                    "synonyms",
+                    "jurisdiction_tags",
+                ],
+            },
+        )
+    )
+
+    class StubProvider(TritonLLMProvider):
+        def __init__(self) -> None:
+            super().__init__(
+                ProviderConfig(
+                    endpoint="http://localhost",
+                    model_name="overlay",
+                    tokenizer_dir=tmp_path,
+                    engine_hash="hash",
+                    quantisation="w4a8",
+                    readiness_thresholds={
+                        "max_queue_delay_us": 100.0,
+                        "max_tokens": 500.0,
+                        "max_cost_usd": 0.5,
+                    },
+                    price_per_token=0.0001,
+                )
+            )
+            self.last_payload = None
+
+        def generate_json(self, schema, prompt: str, *, schema_id: str, max_tokens: int = 256):  # type: ignore[override]
+            self.last_payload = json.loads(prompt)
+            return {
+                "label": "Merger Notification Threshold",
+                "justification": "Supported by provided filings",
+                "citations": ["base-1"],
+                "annotation_prompts": ["Does the document mention notification thresholds?"],
+                "difficulty": "advanced",
+                "nearest_existing": None,
+                "split_children": [],
+                "merge_targets": [],
+                "synonyms": {"en": ["Merger Control Threshold"]},
+                "jurisdiction_tags": ["EU"],
+            }
+
+    provider = StubProvider()
+    return provider, schemas
 
 
 def test_overlay_registry_lifecycle(provenance: OverlayProvenance) -> None:
@@ -82,7 +161,8 @@ def test_overlay_registry_lifecycle(provenance: OverlayProvenance) -> None:
     assert delta.planned_quota == 10
 
 
-def test_candidate_pipeline_generates_valid_proposal(provenance: OverlayProvenance) -> None:
+def test_candidate_pipeline_generates_valid_proposal(provenance: OverlayProvenance, overlay_llm) -> None:
+    provider, registry = overlay_llm
     miner = CorpusCandidateMiner()
     gap = CoverageGap(
         parent_concept_id="base-1",
@@ -95,21 +175,7 @@ def test_candidate_pipeline_generates_valid_proposal(provenance: OverlayProvenan
     seeds = miner.extract(gap)
     assert seeds
 
-    def fake_llm_callable(prompt_bundle, mining_candidates):
-        return {
-            "label": "Merger Notification Threshold",
-            "justification": "Supported by provided filings",
-            "citations": ["base-1"],
-            "annotation_prompts": ["Does the document mention notification thresholds?"],
-            "difficulty": "advanced",
-            "nearest_existing": None,
-            "split_children": [],
-            "merge_targets": [],
-            "synonyms": {"en": ["Merger Control Threshold"]},
-            "jurisdiction_tags": ["EU"],
-        }
-
-    pipeline = CandidatePipeline(llm_callable=fake_llm_callable, quality_config=OverlayQualityGateConfig())
+    pipeline = CandidatePipeline(llm_provider=provider, schema_registry=registry, quality_config=OverlayQualityGateConfig())
     evidence_documents = (EvidenceDocument("base-1", "Filing referenced", 0, 18),)
     proposal = pipeline.generate_proposal(
         gap=gap,
@@ -123,7 +189,8 @@ def test_candidate_pipeline_generates_valid_proposal(provenance: OverlayProvenan
     assert proposal.prompt_hash
 
 
-def test_candidate_pipeline_duplicate_rejected(provenance: OverlayProvenance) -> None:
+def test_candidate_pipeline_duplicate_rejected(provenance: OverlayProvenance, overlay_llm) -> None:
+    provider, registry = overlay_llm
     gap = CoverageGap(
         parent_concept_id="base-1",
         parent_label="Corporate Transactions",
@@ -133,21 +200,40 @@ def test_candidate_pipeline_duplicate_rejected(provenance: OverlayProvenance) ->
         policy_guardrails=tuple(),
     )
 
-    def fake_llm_callable(*_args, **_kwargs):
-        return {
-            "label": "Existing Concept",
-            "justification": "",
-            "citations": [],
-            "annotation_prompts": [""],
-            "difficulty": "basic",
-            "nearest_existing": "Existing Concept",
-            "split_children": [],
-            "merge_targets": [],
-            "synonyms": {},
-            "jurisdiction_tags": [],
-        }
+    class RejectingProvider(TritonLLMProvider):
+        def __init__(self, config: ProviderConfig) -> None:
+            super().__init__(config)
 
-    pipeline = CandidatePipeline(llm_callable=fake_llm_callable)
+        def generate_json(self, schema, prompt: str, *, schema_id: str, max_tokens: int = 256):  # type: ignore[override]
+            return {
+                "label": "Existing Concept",
+                "justification": "",
+                "citations": [],
+                "annotation_prompts": [""],
+                "difficulty": "basic",
+                "nearest_existing": "Existing Concept",
+                "split_children": [],
+                "merge_targets": [],
+                "synonyms": {},
+                "jurisdiction_tags": [],
+            }
+
+    rejecting_provider = RejectingProvider(
+        ProviderConfig(
+            endpoint=provider.config.endpoint,
+            model_name=provider.config.model_name,
+            tokenizer_dir=provider.config.tokenizer_dir,
+            engine_hash=provider.config.engine_hash,
+            quantisation=provider.config.quantisation,
+            readiness_thresholds={
+                "max_queue_delay_us": 100.0,
+                "max_tokens": 500.0,
+                "max_cost_usd": 0.5,
+            },
+            price_per_token=0.0001,
+        )
+    )
+    pipeline = CandidatePipeline(llm_provider=rejecting_provider, schema_registry=registry)
     evidence_documents = (EvidenceDocument("doc", "", None, None),)
     with pytest.raises(QualityGateError):
         pipeline.generate_proposal(

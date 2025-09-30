@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Mapping, Sequence
 
 from pydantic import BaseModel, Field, field_validator
@@ -48,6 +49,7 @@ class ArtifactMetadata(BaseModel):
     artifact_type: str
     version: str
     hash: str
+    signature: str
     title: str
     summary: str
     tenant_id: str
@@ -61,6 +63,7 @@ class ArtifactMetadata(BaseModel):
     approvals: Sequence[str] = Field(default_factory=tuple)
     waivers: Sequence[str] = Field(default_factory=tuple)
     environment_fingerprint: Mapping[str, str] = Field(default_factory=dict)
+    prompt_templates: Sequence[str] = Field(default_factory=tuple)
 
     @field_validator("version")
     @classmethod
@@ -81,9 +84,30 @@ class ArtifactMetadata(BaseModel):
         return payload
 
 
+@dataclass(frozen=True)
+class LLMArtifact:
+    """Summarizes LLM engine and serving artifacts for governance logging."""
+
+    engine_hash: str
+    engine_version: str
+    tokenizer_hash: str
+    schema_registry_path: Path
+    config_path: Path
+
+    def to_payload(self) -> Mapping[str, object]:
+        return {
+            "engine_hash": self.engine_hash,
+            "engine_version": self.engine_version,
+            "tokenizer_hash": self.tokenizer_hash,
+            "schema_registry_path": str(self.schema_registry_path),
+            "config_path": str(self.config_path),
+        }
+
+
 __all__ = [
     "ArtifactMetadata",
     "ArtifactRef",
+    "LLMArtifact",
     "Role",
     "TenantPolicy",
 ]

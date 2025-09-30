@@ -36,6 +36,26 @@ class CandidateScorer:
         ranked.sort(key=lambda candidate: candidate.score, reverse=True)
         return tuple(ranked)
 
+    def rerank(self, candidates: Sequence[Candidate], cross_encoder_scores: Sequence[float]) -> tuple[Candidate, ...]:
+        if not candidates:
+            return tuple()
+        adjusted = []
+        for candidate, ce_score in zip(candidates, cross_encoder_scores, strict=False):
+            weight = 0.7
+            adjusted_score = candidate.score * weight + (ce_score or 0.0) * (1 - weight)
+            adjusted.append(
+                Candidate(
+                    concept_id=candidate.concept_id,
+                    label=candidate.label,
+                    source=candidate.source,
+                    score=float(adjusted_score),
+                    evidence=candidate.evidence,
+                    language=candidate.language,
+                )
+            )
+        adjusted.sort(key=lambda candidate: candidate.score, reverse=True)
+        return tuple(adjusted)
+
     @staticmethod
     def _softmax(values: np.ndarray) -> np.ndarray:
         stable_values = values - np.max(values)

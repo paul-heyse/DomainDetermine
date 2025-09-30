@@ -27,10 +27,29 @@ class ConceptRepository:
                 for concept_id in restriction_ids
                 if concept_id in self.concepts
             )
-        return tuple(self.concepts.values())
+        if context.allowed_concept_ids:
+            return tuple(
+                self.concepts[concept_id]
+                for concept_id in context.allowed_concept_ids
+                if concept_id in self.concepts
+            )
+        return tuple(
+            concept
+            for concept in self.concepts.values()
+            if self._matches_facets(concept, context)
+        )
 
     def get(self, concept_id: str) -> ConceptEntry:
         """Retrieve a single concept entry."""
 
         return self.concepts[concept_id]
+
+    @staticmethod
+    def _matches_facets(concept: ConceptEntry, context: MappingContext) -> bool:
+        for key, value in context.facets.items():
+            if key not in concept.facets:
+                return False
+            if concept.facets[key] != value:
+                return False
+        return True
 

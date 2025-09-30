@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import string
 import tomllib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -55,6 +56,7 @@ class CLIConfig:
 
     contexts: Dict[str, ContextConfig] = field(default_factory=dict)
     default_context: Optional[str] = None
+    plugin_trust: "PluginTrustPolicy" = field(default_factory=lambda: PluginTrustPolicy())
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,29 @@ class ResolvedConfig:
     config_path: Optional[Path]
     state_path: Path
     raw_overrides: Dict[str, Any]
+    plugin_trust: "PluginTrustPolicy"
+
+
+@dataclass(frozen=True)
+class PluginTrustPolicy:
+    """Control how CLI plugins are validated before execution."""
+
+    allow_unsigned: bool = False
+    signature_allowlist: Dict[str, str] = field(default_factory=dict)
+
+    def with_updates(
+        self,
+        *,
+        allow_unsigned: Optional[bool] = None,
+        signatures: Optional[Mapping[str, str]] = None,
+    ) -> "PluginTrustPolicy":
+        updated_signatures = dict(self.signature_allowlist)
+        if signatures:
+            updated_signatures.update(signatures)
+        return PluginTrustPolicy(
+            allow_unsigned=self.allow_unsigned if allow_unsigned is None else allow_unsigned,
+            signature_allowlist=updated_signatures,
+        )
 
 
 def _parse_policy(data: Optional[Mapping[str, Any]], base_dir: Path) -> ContextPolicy:
@@ -107,6 +132,37 @@ def _parse_policy(data: Optional[Mapping[str, Any]], base_dir: Path) -> ContextP
     )
 
 
+def _normalise_signature(value: str) -> str:
+    token = value.strip().lower()
+    if not token:
+        raise ValueError("Plugin signature cannot be empty")
+    if ":" in token:
+        algorithm, digest = token.split(":", 1)
+        if algorithm != "sha256":
+            raise ValueError("Only sha256 plugin signatures are supported")
+        token = digest
+    if len(token) != 64 or any(ch not in string.hexdigits for ch in token):
+        raise ValueError("Plugin signature must be a 64 character hex digest")
+    return token
+
+
+def _parse_signature_mapping(raw: Mapping[str, Any]) -> Dict[str, str]:
+    mapping: Dict[str, str] = {}
+    for name, value in raw.items():
+        if value is None:
+            continue
+        mapping[name] = _normalise_signature(str(value))
+    return mapping
+
+
+def _parse_plugin_trust(data: Optional[Mapping[str, Any]]) -> PluginTrustPolicy:
+    if not data:
+        return PluginTrustPolicy(allow_unsigned=True)
+    allow_unsigned = bool(data.get("allow_unsigned", True))
+    signatures = _parse_signature_mapping(data.get("signatures", {}))
+    return PluginTrustPolicy(allow_unsigned=allow_unsigned, signature_allowlist=signatures)
+
+
 def _load_file_config(path: Path) -> CLIConfig:
     data: Dict[str, Any]
     suffix = path.suffix.lower()
@@ -135,7 +191,9 @@ def _load_file_config(path: Path) -> CLIConfig:
             policy=policy,
         )
 
-    return CLIConfig(contexts=contexts, default_context=default_ctx)
+    plugin_trust = _parse_plugin_trust(data.get("plugins"))
+
+    return CLIConfig(contexts=contexts, default_context=default_ctx, plugin_trust=plugin_trust)
 
 
 
@@ -149,7 +207,12 @@ def _default_cli_config(base: Path) -> CLIConfig:
         registry_url="https://registry.local.dev",
         log_level="INFO",
     )
-    return CLIConfig(contexts={context.name: context}, default_context=context.name)
+    plugin_trust = PluginTrustPolicy(allow_unsigned=True)
+    return CLIConfig(
+        contexts={context.name: context},
+        default_context=context.name,
+        plugin_trust=plugin_trust,
+    )
 
 
 def _state_home(env: Mapping[str, str]) -> Path:
@@ -307,6 +370,26 @@ def load_cli_config(
 
     state_path = _state_path(env)
 
+    plugin_trust = config.plugin_trust
+    allow_unsigned_env = env.get("DD_ALLOW_UNSIGNED_PLUGINS")
+    if allow_unsigned_env is not None:
+        allow_unsigned = allow_unsigned_env.strip().lower() in {"1", "true", "yes"}
+        plugin_trust = plugin_trust.with_updates(allow_unsigned=allow_unsigned)
+
+    signatures_env = env.get("DD_TRUSTED_PLUGIN_SIGNATURES")
+    if signatures_env:
+        entries = {}
+        for item in signatures_env.split(","):
+            if not item.strip():
+                continue
+            if "=" not in item:
+                raise ValueError(
+                    "DD_TRUSTED_PLUGIN_SIGNATURES entries must use name=sha256 format"
+                )
+            name, sig = item.split("=", 1)
+            entries[name.strip()] = _normalise_signature(sig)
+        plugin_trust = plugin_trust.with_updates(signatures=entries)
+
     return ResolvedConfig(
         context=context,
         contexts=dict(config.contexts),
@@ -317,5 +400,5 @@ def load_cli_config(
         config_path=path,
         state_path=state_path,
         raw_overrides=dict(overrides),
+        plugin_trust=plugin_trust,
     )
-

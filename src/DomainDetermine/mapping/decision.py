@@ -14,6 +14,7 @@ class DecisionEngine:
 
     def __init__(self, confidence_threshold: float = 0.0) -> None:
         self.confidence_threshold = confidence_threshold
+        self.allow_ties_for_review = True
 
     def decide(
         self,
@@ -74,6 +75,10 @@ class LLMDecisionEngine(DecisionEngine):
     llm_callable: Callable[[str], dict[str, str]]
     human_review_queue: list[MappingItem] = field(default_factory=list)
     confidence_threshold: float = 0.0
+    tie_threshold: float = 0.05
+
+    def __post_init__(self) -> None:
+        DecisionEngine.__init__(self, confidence_threshold=self.confidence_threshold)
 
     def decide(
         self,
@@ -91,12 +96,26 @@ class LLMDecisionEngine(DecisionEngine):
         if confidence < self.confidence_threshold:
             self.human_review_queue.append(mapping_item)
             return None
-        evidence = tuple(json.loads(deliberation.get("evidence", "[]")))
+        if self.allow_ties_for_review and len(ranked_candidates) >= 2:
+            delta = abs(ranked_candidates[0].score - ranked_candidates[1].score)
+            if delta <= self.tie_threshold:
+                self.human_review_queue.append(mapping_item)
+                return None
+        evidence_payload = deliberation.get("evidence", [])
+        if isinstance(evidence_payload, str):
+            evidence_payload = json.loads(evidence_payload)
+        evidence = tuple(evidence_payload)
         method_metadata = {
             "model_ref": self.model_ref,
             "prompt_hash": deliberation.get("prompt_hash", ""),
             "raw": json.dumps(deliberation, ensure_ascii=False),
         }
+        reason = deliberation.get("reason")
+        if reason:
+            method_metadata["reason"] = reason
+        latency_ms = float(deliberation.get("latency_ms", 0.0)) if "latency_ms" in deliberation else None
+        cost_usd = float(deliberation.get("cost_usd", 0.0)) if "cost_usd" in deliberation else None
+        reason_code = deliberation.get("reason_code")
         record = MappingRecord(
             mapping_item=mapping_item,
             concept_id=selected_id,
@@ -107,6 +126,9 @@ class LLMDecisionEngine(DecisionEngine):
             kos_snapshot_id="unknown",
             coverage_plan_id=mapping_item.context.coverage_plan_slice_id,
             llm_model_ref=self.model_ref,
+            latency_ms=latency_ms,
+            cost_usd=cost_usd,
+            reason_code=reason_code,
         )
         return record
 

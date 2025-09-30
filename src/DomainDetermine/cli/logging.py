@@ -32,7 +32,7 @@ def configure_logging(log_path: Path, log_format: str, verbose: bool) -> logging
             "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
         },
         "json": {
-            "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+            "()": "pythonjsonlogger.json.JsonFormatter",
             "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s",
         },
     }

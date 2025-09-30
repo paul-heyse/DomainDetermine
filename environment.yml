@@ -13,3 +13,7 @@ dependencies:
   - pre-commit
   - pip:
       - python-dotenv
+      - opentelemetry-sdk
+      - opentelemetry-api
+      - opentelemetry-exporter-otlp
+      - -e .[dev,service]

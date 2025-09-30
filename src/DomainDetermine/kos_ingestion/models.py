@@ -165,6 +165,8 @@ class ParserOutput:
 class SnapshotValidationSummary(BaseModel):
     shacl: Mapping[str, object]
     tabular: Mapping[str, object]
+    diagnostics: Mapping[str, object]
+    severity: str
 
 
 class SnapshotManifestModel(BaseModel):
@@ -208,6 +210,27 @@ class IngestResult:
 @dataclass
 class ConnectorMetrics:
     """Simple in-memory metrics accumulator for connector runs."""
+
+    counters: MutableMapping[str, int] = field(default_factory=dict)
+    timings: MutableMapping[str, list] = field(default_factory=dict)
+
+    def incr(self, key: str, amount: int = 1) -> None:
+        self.counters[key] = self.counters.get(key, 0) + amount
+
+    def observe(self, key: str, value: float) -> None:
+        bucket = self.timings.setdefault(key, [])
+        bucket.append(value)
+
+    def as_dict(self) -> Dict[str, object]:
+        return {
+            "counters": dict(self.counters),
+            "timings": {k: list(v) for k, v in self.timings.items()},
+        }
+
+
+@dataclass
+class QueryMetrics:
+    """Telemetry accumulator for read-side query operations."""
 
     counters: MutableMapping[str, int] = field(default_factory=dict)
     timings: MutableMapping[str, list] = field(default_factory=dict)

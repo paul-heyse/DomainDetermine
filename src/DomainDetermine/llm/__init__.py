@@ -8,10 +8,12 @@ from .config import (
     default_launch_plan,
 )
 from .models import BuildFlags, BuildManifest, CalibrationDataset, ModelSnapshot
+from .observability import LLMInvocationMetrics, LLMObservability
 from .pipeline import BuildSmokeResult, EngineBuilder
 from .plans import load_engine_builder
 from .provider import ProviderConfig, TritonLLMProvider
 from .schemas import SchemaRecord, SchemaRegistry
+from .tokenizer import TokenizerInfoCache
 
 __all__ = [
     "BuildEnvironment",
@@ -30,4 +32,7 @@ __all__ = [
     "TritonLLMProvider",
     "SchemaRecord",
     "SchemaRegistry",
+    "TokenizerInfoCache",
+    "LLMObservability",
+    "LLMInvocationMetrics",
 ]

@@ -1,0 +1,31 @@
+{
+    "template_id": "mapping_decision",
+    "version": "v1",
+    "allowed_sources": [
+        "concept_definition",
+        "scope_note",
+        "mapping_context"
+    ],
+    "token_budget": {
+        "prompt": 2048,
+        "completion": 256
+    },
+    "privacy": {
+        "allow_pii": false,
+        "allow_restricted": false
+    },
+    "citation_policy": {
+        "require_citations": true,
+        "citation_format": "text"
+    },
+    "filter_terms": [
+        "Filtered out"
+    ],
+    "quality_targets": {
+        "grounding_fidelity_min": 0.9,
+        "citation_coverage_min": 0.95,
+        "hallucination_rate_max": 0.02,
+        "acceptance_rate_min": 0.8,
+        "constraint_violations_max": 0.01
+    }
+}

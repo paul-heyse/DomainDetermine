@@ -41,11 +41,25 @@ def snapshot_tables() -> SnapshotTables:
             path_to_root=("C1",),
             provenance={"source": "fixture"},
         ),
+        ConceptRecord(
+            canonical_id="C3",
+            source_id="S3",
+            source_scheme="test",
+            preferred_label="Detached",
+            definition="a deliberately longer definition to trigger checks",
+            language="en",
+            depth=1,
+            is_leaf=True,
+            is_deprecated=False,
+            path_to_root=("C1",),
+            provenance={"source": "fixture"},
+        ),
     ]
     labels = [
         LabelRecord(concept_id="C1", text="Root", language="en", is_preferred=True, kind="pref"),
         LabelRecord(concept_id="C2", text="Child", language="en", is_preferred=True, kind="pref"),
         LabelRecord(concept_id="C2", text="Kid", language="en", is_preferred=False, kind="alt"),
+        LabelRecord(concept_id="C3", text="Detached", language="en", is_preferred=True, kind="pref"),
     ]
     relations = [
         RelationRecord(subject_id="C1", predicate="narrower", object_id="C2"),
@@ -64,12 +78,19 @@ def test_get_concept(snapshot_tables: SnapshotTables) -> None:
     assert concept["preferred_label"] == "Root"
     assert concept["labels"]
     assert concept["relations"]["narrower"] == ["C2"]
+    service.get_concept("C1")  # second call should hit the cache
+    assert service.metrics.counters["query.get_concept.requests"] == 2
+    assert service.metrics.counters["cache.concept.hit"] == 1
+    assert service.metrics.counters["cache.concept.miss"] == 1
 
 
 def test_subtree(snapshot_tables: SnapshotTables) -> None:
     service = SnapshotQueryService(snapshot_tables)
     subtree = service.subtree("C1")
     assert set(subtree) == {"C1", "C2"}
+    service.subtree("C1")
+    assert service.metrics.counters["cache.subtree.hit"] == 1
+    assert service.metrics.counters["cache.subtree.miss"] == 1
 
 
 def test_search_labels(snapshot_tables: SnapshotTables) -> None:
@@ -77,6 +98,30 @@ def test_search_labels(snapshot_tables: SnapshotTables) -> None:
     matches = service.search_labels("Child")
     assert matches
     assert matches[0]["concept_id"] == "C2"
+    assert matches[0]["retrieval"] == "fuzzy"
+    service.search_labels("Child")
+    assert service.metrics.counters["cache.search.hit"] == 1
+    assert service.metrics.counters["cache.search.miss"] == 1
+
+
+def test_search_labels_semantic_fallback(snapshot_tables: SnapshotTables) -> None:
+    class FakeSemanticIndex:
+        def search(self, query: str, *, lang: str | None, limit: int):
+            return [
+                {
+                    "concept_id": "C3",
+                    "label": "Detached",
+                    "score": 68.0,
+                    "language": lang or "en",
+                }
+            ]
+
+    service = SnapshotQueryService(snapshot_tables, semantic_index=FakeSemanticIndex())
+    matches = service.search_labels("Nonexistent", use_semantic=True, limit=5)
+    assert any(match["retrieval"] == "semantic" for match in matches)
+    semantic = next(match for match in matches if match["retrieval"] == "semantic")
+    assert semantic["non_authoritative"] is True
+    assert service.metrics.counters["query.search.semantic_requests"] == 1
 
 
 def test_sparql_gateway_cache(snapshot_tables: SnapshotTables, monkeypatch) -> None:
@@ -124,10 +169,46 @@ def test_sparql_gateway_cache(snapshot_tables: SnapshotTables, monkeypatch) -> N
     )
     assert out2["from_cache"] is True
     assert service.sparql_metrics["cache_hits"] == 1
+    assert service.metrics.counters["sparql.cache_hit"] == 1
+    assert service.metrics.counters["sparql.cache_miss"] == 1
+
+
+def test_sparql_endpoint_whitelist(snapshot_tables: SnapshotTables, monkeypatch) -> None:
+    class DummyClient:
+        def __init__(self, url):
+            self.url = url
+
+        def setReturnFormat(self, fmt):
+            return None
+
+        def setTimeout(self, timeout):
+            return None
+
+        def addCustomHttpHeader(self, key, value):
+            return None
+
+        def setQuery(self, query):
+            self.query_text = query
+
+        def query(self):
+            class _Resp:
+                def convert(self_inner):
+                    return {"results": {"bindings": []}}
+
+            return _Resp()
+
+    monkeypatch.setattr("DomainDetermine.kos_ingestion.query.SPARQLWrapper", DummyClient)
+
+    config = QueryConfig(sparql_allowed_endpoints=("https://allowed.com/",))
+    service = SnapshotQueryService(snapshot_tables, config=config)
+    with pytest.raises(ValueError):
+        service.sparql_query("https://denied.com/sparql", "SELECT * WHERE {?s ?p ?o}")
+
+    out = service.sparql_query("https://allowed.com/sparql", "SELECT * WHERE {?s ?p ?o}")
+    assert out["from_cache"] is False
 
 
 def test_sparql_gateway_enforces_whitelist(snapshot_tables: SnapshotTables) -> None:
     service = SnapshotQueryService(snapshot_tables)
     with pytest.raises(ValueError):
         service.sparql_query("https://example.com/sparql", "DELETE WHERE {?s ?p ?o}")
-

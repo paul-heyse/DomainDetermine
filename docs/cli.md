@@ -15,7 +15,7 @@ python -m DomainDetermine.cli.app plan plans/legal-plan.toml
 Global options:
 - `--config /path/to/config.toml` – override the configuration file.
 - `--context staging` – activate a named context profile.
-- `--dry-run` – preview operations without mutating artifacts.
+- `--dry-run / --no-dry-run` – preview operations without mutating artifacts (defaults to enabled when `--dry-run` is passed).
 - `--log-format json` – emit JSON logs (useful for CI). Rich progress is automatically disabled when JSON output is requested.
 
 ## Context Management
@@ -53,6 +53,18 @@ During interactive runs the CLI displays Rich-powered spinners. All runs write s
 
 Teams can extend the CLI by publishing Python entry points under the `cli.plugins.*` namespaces. Use `python -m DomainDetermine.cli.app plugins list` to inspect discovered plugins. Command verbs may opt-in to plugins; for example, ingestion supports loader plugins via `--loader custom_loader`. Plugins execute inside a guarded sandbox: failures are logged and reported as `[plugin-error]` without crashing the core command.
 
+The CLI enforces signature verification for plugins unless explicitly configured for development. Configure trust in `cli.toml`:
+
+```toml
+[plugins]
+allow_unsigned = false  # set to true only for local experimentation
+
+[plugins.signatures]
+custom_loader = "sha256:4b31..."
+```
+
+`plugins list` shows trust status alongside each plugin (`trusted`, `unsigned`, `untrusted`, or `signature-mismatch`). Operators can add or override trusted signatures through `DD_TRUSTED_PLUGIN_SIGNATURES="name=sha256:..."`. Set `DD_ALLOW_UNSIGNED_PLUGINS=1` to temporarily permit unsigned plugins (not recommended outside local development). During execution the CLI captures plugin stdout/stderr and exposes an isolated `DD_PLUGIN_SANDBOX_DIR` scratch directory to limit side effects.
+
 ## Profiles
 
 Profiles capture repeatable workflows as TOML manifests:
@@ -70,7 +82,7 @@ verb = "plan"
 plan_spec = "plans/legal.toml"
 ```
 
-Run them with `python -m DomainDetermine.cli.app profile run legal-pilot`. The CLI previews each step, honours global `--dry-run`, and then invokes the listed verbs sequentially.
+Run them with `python -m DomainDetermine.cli.app profile run legal-pilot`. The CLI validates that each step references a known verb with the required arguments before execution, surfaces validation errors, previews the plan, honours global `--dry-run`, and then invokes the listed verbs sequentially.
 
 ## Safety Rails
 
@@ -82,4 +94,3 @@ Mutating commands (e.g., `publish`, `rollback`, `map`) enforce preflight checks 
 - **Confirmation prompts** – destructive verbs require confirmation unless `--yes` is supplied.
 
 Secrets such as registry credentials must be referenced via `env:VAR` or secret-manager URIs: direct secret strings on CLI flags are rejected.
-

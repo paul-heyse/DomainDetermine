@@ -21,6 +21,8 @@ ruff check src tests
 black .
 ```
 
+See `docs/dependencies.md` for environment bootstrap instructions, optional extras, and installation commands (`pip install -e .[dev,service]`).
+
 ## Key Concepts
 
 - **KOS Snapshot** – Graph plus Parquet tables pinned to upstream source metadata.

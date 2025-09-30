@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Sequence
+
+from typer.models import ArgumentInfo, OptionInfo
 
 from .config import ResolvedConfig
 
@@ -99,6 +102,57 @@ def ensure_version_compat(manifest: ProfileManifest, cli_version: str) -> None:
         )
 
 
+def validate_profile(
+    manifest: ProfileManifest, resolver: Callable[[str], Callable[..., Any]]
+) -> List[str]:
+    """Validate that profile steps match available commands and required arguments."""
+
+    errors: List[str] = []
+    for index, step in enumerate(manifest.steps, start=1):
+        try:
+            handler = resolver(step.verb)
+        except ValueError as exc:
+            errors.append(f"Step {index}: {exc}")
+            continue
+
+        signature = inspect.signature(handler)
+        required_arguments: List[str] = []
+        for name, parameter in signature.parameters.items():
+            if name == "ctx":
+                continue
+            if parameter.kind not in {
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            }:
+                continue
+            default = parameter.default
+            is_required = False
+            if default is inspect.Signature.empty:
+                is_required = True
+            elif isinstance(default, ArgumentInfo):
+                is_required = default.default is ...  # type: ignore[comparison-overlap]
+            elif isinstance(default, OptionInfo):
+                is_required = default.default is ...  # type: ignore[comparison-overlap]
+            if is_required:
+                required_arguments.append(name)
+
+        missing = [arg for arg in required_arguments if arg not in step.arguments]
+        if missing:
+            errors.append(
+                f"Step {index} ({step.verb}): missing required arguments: {', '.join(sorted(missing))}"
+            )
+
+        unexpected = [
+            key for key in step.arguments.keys() if key not in signature.parameters
+        ]
+        if unexpected:
+            errors.append(
+                f"Step {index} ({step.verb}): unexpected arguments: {', '.join(sorted(unexpected))}"
+            )
+
+    return errors
+
+
 __all__ = [
     "PATH_ARGUMENT_KEYS",
     "ProfileManifest",
@@ -106,4 +160,5 @@ __all__ = [
     "ensure_version_compat",
     "load_profile",
     "resolve_profile_path",
+    "validate_profile",
 ]

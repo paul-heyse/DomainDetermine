@@ -6,8 +6,9 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Callable, Iterable, Mapping, Optional, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
+from DomainDetermine.llm import SchemaRegistry, TritonLLMProvider
 from DomainDetermine.overlay.exceptions import PolicyViolationError, QualityGateError
 from DomainDetermine.overlay.models import EvidenceDocument, EvidencePack
 from DomainDetermine.overlay.quality import OverlayQualityGateConfig, run_quality_gates
@@ -259,14 +260,20 @@ class CandidatePipeline:
     def __init__(
         self,
         *,
-        llm_callable: Callable[[PromptBundle, Sequence[CandidateSeed]], Mapping[str, object]],
+        llm_provider: TritonLLMProvider,
+        schema_registry: SchemaRegistry,
         quality_config: Optional[OverlayQualityGateConfig] = None,
+        schema_name: str = "overlay_candidate",
+        schema_version: str = "v1",
     ) -> None:
-        self._llm_callable = llm_callable
+        self._llm_provider = llm_provider
+        self._schema_registry = schema_registry
         self._quality_config = quality_config or OverlayQualityGateConfig()
         self._prompt_assembler = PromptAssembler()
         self._output_validator = StructuredOutputValidator()
         self._critique_engine = SelfCritiqueEngine()
+        self._schema_name = schema_name
+        self._schema_version = schema_version
 
     def generate_proposal(
         self,
@@ -286,7 +293,21 @@ class CandidatePipeline:
             policy_guardrails=gap.policy_guardrails,
             corpus_snippets=gap.corpus_snippets,
         )
-        raw_payload = self._llm_callable(prompt_bundle, mining_candidates)
+        schema_record = self._schema_registry.load_record(self._schema_name, self._schema_version)
+        payload = {
+            "parent_definition": prompt_bundle.parent_definition,
+            "sibling_labels": list(prompt_bundle.sibling_labels),
+            "editorial_rules": list(prompt_bundle.editorial_rules),
+            "policy_guardrails": list(prompt_bundle.policy_guardrails),
+            "corpus_snippets": list(prompt_bundle.corpus_snippets),
+            "candidate_seeds": [seed.label for seed in mining_candidates],
+        }
+        raw_payload = self._llm_provider.generate_json(
+            schema_record.schema,
+            json.dumps(payload),
+            schema_id=schema_record.id,
+            max_tokens=512,
+        )
         structured = self._output_validator.parse(raw_payload)
         critique = self._critique_engine.critique(
             structured,

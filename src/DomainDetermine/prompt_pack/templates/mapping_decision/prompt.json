@@ -1,0 +1,14 @@
+{
+    "template_id": "mapping_decision",
+    "version": "1.0.0",
+    "description": "LLM-gated mapping decision template requiring evidence citations",
+    "owner": "governance-team",
+    "schema": "mapping_decision_v1",
+    "policy": "mapping_decision_v1",
+    "citations_required": true,
+    "roles": [
+        "generation",
+        "adjudication"
+    ],
+    "created_at": "2025-09-29T00:00:00Z"
+}

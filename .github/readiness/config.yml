@@ -1,0 +1,26 @@
+suites:
+  - suite: unit
+    command: ["pytest", "-q", "tests"]
+    blocking: true
+    retries: 0
+    timeout: 900
+    thresholds:
+      max_duration_seconds: 1200
+      max_flake_rate: 0.1
+  - suite: integration
+    command: ["pytest", "-q", "tests/test_cli_app.py", "tests/test_service_app.py"]
+    blocking: true
+    retries: 0
+    timeout: 1800
+    thresholds:
+      max_duration_seconds: 2400
+      min_success_rate: 0.98
+      max_flake_rate: 0.1
+  - suite: end-to-end
+    command: ["python", "scripts/e2e/run_readiness.py"]
+    blocking: true
+    retries: 0
+    timeout: 3600
+    thresholds:
+      max_duration_seconds: 4200
+

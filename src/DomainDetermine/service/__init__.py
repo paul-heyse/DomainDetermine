@@ -2,7 +2,8 @@
 
 from .app import create_app
 from .auth import AuthSettings, get_auth_settings
-from .jobs import JobManager, JobRequest, JobStatus, Registry
+from .handlers import register_default_handlers
+from .jobs import JobManager, JobRequest, JobStatus, Registry, ThreadedJobRunner
 from .repos import InMemoryRegistry
 
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     "JobRequest",
     "JobStatus",
     "Registry",
+    "ThreadedJobRunner",
     "InMemoryRegistry",
+    "register_default_handlers",
 ]
-

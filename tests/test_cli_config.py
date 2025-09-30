@@ -109,3 +109,6 @@ def test_env_overrides_policy_guard(tmp_path: Path) -> None:
     assert set(policy.license_flags) == {"a", "b"}
 
 
+# TODO: implement tests for mapping pipeline configuration
+
+

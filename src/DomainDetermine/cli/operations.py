@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 
 import click
+import typer
 
 from .config import ResolvedConfig
 from .logging import progress_spinner
@@ -133,8 +134,8 @@ class OperationExecutor:
         return OperationOutcome.EXECUTED
 
 
-def build_runtime(ctx: click.Context) -> CommandRuntime:
-    """Construct a runtime from the Click context."""
+def build_runtime(ctx: typer.Context) -> CommandRuntime:
+    """Construct a runtime from the Typer context."""
 
     resolved: ResolvedConfig = ctx.obj["config"]
     logger: logging.Logger = ctx.obj["logger"]

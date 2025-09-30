@@ -13,10 +13,13 @@ class CrosswalkProposer:
     """Generates cross-scheme alignment proposals."""
 
     target_schemes: Sequence[str]
+    threshold: float = 0.6
 
     def propose(self, records: Iterable[MappingRecord]) -> tuple[CrosswalkProposal, ...]:
         proposals: list[CrosswalkProposal] = []
         for record in records:
+            if record.method_metadata.get("lexical_overlap", 0.0) < self.threshold:
+                continue
             for scheme in self.target_schemes:
                 proposals.append(
                     CrosswalkProposal(

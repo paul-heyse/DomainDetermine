@@ -27,5 +27,9 @@ trtllm-build \
   --max_output_tokens 1024
 
 python3 ${PROJECT_ROOT}/tools/llm/write_manifest.py --workspace "${WORKSPACE}" --engine "${ENGINE_DIR}/qwen3-32b-w4a8.plan" --output "${MANIFEST_DIR}/qwen3-32b.json"
+# Note readiness thresholds for downstream deployment (served via environment variables):
+#   READINESS_MAX_QUEUE_DELAY_US=2500
+#   READINESS_MAX_TOKENS=6000
+#   READINESS_MAX_COST_USD=0.10
 
 python3 ${PROJECT_ROOT}/tools/llm/smoke_test.py --engine "${ENGINE_DIR}/qwen3-32b-w4a8.plan" --output "${WORKSPACE}/smoke/qwen3.json"

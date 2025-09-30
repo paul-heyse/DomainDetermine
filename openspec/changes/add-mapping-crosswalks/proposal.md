@@ -1,16 +1,13 @@
 ## Why
-
-- Mapping messy inputs to canonical concept IDs today is manual or ad-hoc, lacks auditability, and blocks downstream modules.
-- Cross-scheme gaps (EuroVoc ↔ LKIF, FIBO ↔ JEL) prevent consistent analytics and coverage planning across domains.
+Multi-pass mapping, crosswalk storage, telemetry, and human-in-the-loop operations are implemented but not governed, leaving Module 3 without enforceable requirements.
 
 ## What Changes
-
-- Introduce a standards-driven mapping & crosswalk capability that resolves free-text topics/spans into Module 1 concept IDs with evidence and calibrated confidence.
-- Capture ranked candidate sets, LLM-gated rationales, and human adjudication signals for traceable review.
-- Establish crosswalk proposal workflows with hybrid similarity + LLM justification and human approvals.
-- Stand up governed storage, metrics, and human-in-the-loop operations to keep mappings immutable, versioned, and compliant.
+- Define mapping requirements covering mission/success criteria, inputs/outputs, trust boundary, pipeline stages, crosswalk workflow, storage/indexing, quality controls, HITL operations, and governance compliance.
+- Implement/confirm pipeline components, telemetry, crosswalk storage, and reviewer tooling aligned with the spec.
+- Document calibration/testing and governance integration.
 
 ## Impact
-
-- Affected specs: mapping/mapping
-- Affected code: mapping resolvers, candidate generation services, crosswalk pipeline, registry integrations, reviewer workbench surfaces, telemetry.
+- Affected specs: `mapping/spec.md`
+- Affected code: `src/DomainDetermine/mapping/{candidate_generation,decision,pipeline,storage,telemetry}.py`
+- Affected docs: `docs/mapping.md`
+- Tests: `tests/test_mapping_pipeline.py`, calibration/telemetry tests

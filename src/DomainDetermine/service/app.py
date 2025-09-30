@@ -8,13 +8,18 @@ from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 
+from DomainDetermine.governance.event_log import GovernanceEventLog, GovernanceEventType
+
 from .auth import AuthContext, get_auth_context, require_roles
-from .jobs import JobManager, JobRecord, JobRequest, QuotaExceededError
+from .events import alert_quota_violation, emit_job_event
+from .handlers import register_default_handlers
+from .jobs import JobManager, JobRecord, JobRequest, QuotaExceededError, ThreadedJobRunner
 from .schemas import (
     ArtifactCreateRequest,
     ArtifactListResponse,
     ArtifactResponse,
     ArtifactUpdateRequest,
+    DependencyStatus,
     HealthResponse,
     JobListResponse,
     JobRequestPayload,
@@ -22,6 +27,7 @@ from .schemas import (
     QuotaResponse,
     ReadinessResponse,
 )
+from .telemetry import SlowRequestTracker, TelemetryMiddleware, job_span
 
 ADMIN_ROLES = {"admin", "publisher"}
 VIEWER_ROLES = {"viewer", "admin", "publisher"}
@@ -35,6 +41,7 @@ def _artifact_to_response(entry) -> ArtifactResponse:
         metadata=entry.metadata,
         created_at=entry.created_at,
         updated_at=entry.updated_at,
+        download_available=bool(getattr(entry, "content", None)),
     )
 
 
@@ -49,16 +56,61 @@ def _job_to_response(record: JobRecord) -> JobResponse:
     )
 
 
-def create_app(job_manager: JobManager) -> FastAPI:
+def create_app(
+    job_manager: JobManager,
+    *,
+    slow_request_threshold_ms: float = 500.0,
+    event_log: GovernanceEventLog | None = None,
+) -> FastAPI:
     app = FastAPI(title="DomainDetermine Service", version="0.1.0")
+    if job_manager.runner is None:
+        job_manager.runner = ThreadedJobRunner()
+    if event_log is not None:
+        job_manager.event_log = event_log
+    slow_tracker = SlowRequestTracker()
+    app.state.slow_request_tracker = slow_tracker
+    app.add_middleware(
+        TelemetryMiddleware,
+        slow_query_threshold_ms=slow_request_threshold_ms,
+        on_slow_request=slow_tracker.record,
+    )
+    register_default_handlers(job_manager)
     @app.get("/healthz", response_model=HealthResponse)
     def health(_: AuthContext = Depends(get_auth_context)) -> HealthResponse:
-        # In a real deployment dependency statuses would be collected here.
-        return HealthResponse(status="ok", dependencies=[], slow_queries=[])
+        dependency_statuses: list[DependencyStatus] = []
+        overall_status = "ok"
+        try:
+            list(job_manager.registry.list_artifacts())
+            dependency_statuses.append(DependencyStatus(name="registry", status="ok"))
+        except Exception as exc:  # pragma: no cover - defensive path
+            overall_status = "degraded"
+            dependency_statuses.append(DependencyStatus(name="registry", status="error", details=str(exc)))
+        runner_status = "ok" if job_manager.runner is not None else "idle"
+        dependency_statuses.append(DependencyStatus(name="job_runner", status=runner_status))
+        return HealthResponse(
+            status=overall_status,
+            dependencies=dependency_statuses,
+            slow_queries=slow_tracker.snapshot(),
+        )
 
     @app.get("/readyz", response_model=ReadinessResponse)
     def ready(_: AuthContext = Depends(get_auth_context)) -> ReadinessResponse:
-        return ReadinessResponse(status="ready", pending_migrations=False, queue_depth=0)
+        try:
+            queue_depth = len(list(job_manager.list()))
+            registry_ok = True
+        except Exception:  # pragma: no cover - defensive path
+            queue_depth = -1
+            registry_ok = False
+        runner_ready = job_manager.runner is not None
+        slow_queries = slow_tracker.snapshot()
+        status_text = "ready" if registry_ok and runner_ready and not slow_queries else "not-ready"
+        response = ReadinessResponse(
+            status=status_text,
+            pending_migrations=False,
+            queue_depth=queue_depth,
+            slow_queries=slow_queries,
+        )
+        return response
 
     @app.post(
         "/artifacts",
@@ -87,9 +139,25 @@ def create_app(job_manager: JobManager) -> FastAPI:
         auth: AuthContext = Depends(get_auth_context),
     ) -> ArtifactResponse:
         require_roles(auth, ADMIN_ROLES)
-        job_manager.registry.update_artifact(artifact_id, payload.metadata)
+        job_manager.registry.update_artifact(
+            artifact_id,
+            payload.metadata,
+            content=payload.content,
+            content_type=payload.content_type,
+        )
         entry = job_manager.registry.artifacts[artifact_id]
         return _artifact_to_response(entry)
+
+    @app.get("/artifacts/{artifact_id}/download")
+    def download_artifact(
+        artifact_id: str,
+        auth: AuthContext = Depends(get_auth_context),
+    ):
+        require_roles(auth, VIEWER_ROLES)
+        content, content_type = job_manager.registry.get_artifact_payload(artifact_id)
+        if not content:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact content not available")
+        return StreamingResponse(iter([content]), media_type=content_type)
 
     @app.delete("/artifacts/{artifact_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_artifact(
@@ -115,11 +183,50 @@ def create_app(job_manager: JobManager) -> FastAPI:
             reason=auth.reason,
         )
         try:
-            record = job_manager.enqueue(request)
+            with job_span(
+                "job.enqueue",
+                attributes={
+                    "job.type": payload.job_type,
+                    "job.tenant": payload.tenant,
+                    "job.project": payload.project,
+                },
+            ):
+                record = job_manager.enqueue(request)
         except QuotaExceededError as exc:  # pragma: no cover - simple error mapping
+            detail = {
+                "message": str(exc),
+                "quota": {
+                    "type": exc.quota_type,
+                    "limit": exc.limit,
+                    "used": exc.used,
+                },
+            }
+            job_manager_event_log = job_manager.event_log
+            emit_job_event(
+                event_log=job_manager_event_log,
+                event_type=GovernanceEventType.SERVICE_JOB_QUOTA_EXCEEDED,
+                job_id=f"pending:{payload.job_type}",
+                tenant=payload.tenant,
+                actor=auth.actor,
+                payload={
+                    "job_type": payload.job_type,
+                    "project": payload.project,
+                    "quota_type": exc.quota_type,
+                    "limit": exc.limit,
+                    "used": exc.used,
+                },
+            )
+            alert_quota_violation(
+                job_id=f"pending:{payload.job_type}",
+                tenant=payload.tenant,
+                quota_type=exc.quota_type,
+                used=exc.used,
+                limit=exc.limit,
+            )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=str(exc),
+                detail=detail,
+                headers={"Retry-After": str(exc.retry_after_seconds)},
             ) from exc
         return _job_to_response(record)
 
@@ -163,4 +270,3 @@ def create_app(job_manager: JobManager) -> FastAPI:
         return responses
 
     return app
-

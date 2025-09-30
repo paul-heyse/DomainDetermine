@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional
 
 from .canonical import SnapshotTables
 from .fetchers import CheckedResponse, FetchError, HttpFetcher, SparqlFetcher, build_metadata
@@ -15,6 +16,7 @@ from .models import (
     LicensingPolicy,
     ParserOutput,
     SnapshotInfo,
+    SnapshotValidationSummary,
     SourceConfig,
     SourceType,
 )
@@ -41,6 +43,7 @@ class IngestConnector:
         self.sparql_fetcher = sparql_fetcher or SparqlFetcher()
         self.normalizer = NormalizationPipeline()
         self.validator = KOSValidator()
+        self.review_manifest_path = context.ensure_root() / "reviews.json"
 
     def run(self, config: SourceConfig) -> IngestResult:
         """Execute fetch → parse → normalize for a single KOS source."""
@@ -52,8 +55,14 @@ class IngestConnector:
 
         logger.info("Starting ingest for %s", config.id)
 
+        telemetry: dict[str, object] = {
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start)),
+        }
+
+        fetch_start = time.time()
         with track_latency(self.context.metrics, "fetch.duration_seconds"):
             response = self._fetch(config)
+        telemetry["fetch_duration"] = time.time() - fetch_start
 
         content = response.content
         bytes_downloaded = len(content)
@@ -73,6 +82,7 @@ class IngestConnector:
             checksum=checksum,
             delta=delta,
         )
+        metadata.extra["telemetry"] = telemetry
 
         artifact_path = target_dir / config.artifact_basename()
         artifact_path.write_bytes(content)
@@ -82,8 +92,10 @@ class IngestConnector:
         snapshot_info: Optional[SnapshotInfo] = None
         validation_report = None
         if config.type != SourceType.SPARQL:
+            normalize_start = time.time()
             with track_latency(self.context.metrics, "normalize.duration_seconds"):
                 normalization = self.normalizer.run(config, content)
+            telemetry["normalize_duration"] = time.time() - normalize_start
             parser_output = normalization.parser_output
             tables = normalization.tables
             snapshot_info = self._persist_snapshot(
@@ -91,11 +103,21 @@ class IngestConnector:
                 target_dir=target_dir,
                 tables=tables,
             )
+            validation_start = time.time()
             with track_latency(self.context.metrics, "validation.duration_seconds"):
                 validation = self.validator.validate(config, tables, parser_output)
+            telemetry["validation_duration"] = time.time() - validation_start
             validation_report = validation
             if snapshot_info:
-                snapshot_info.validation_report = validation
+                validation_payload = validation.to_dict()
+                if "severity" in validation_payload:
+                    snapshot_info.validation_report = SnapshotValidationSummary(**validation_payload)
+                else:
+                    metadata.extra.setdefault("validation", validation_payload)
+
+        review_manifest = self._load_review_manifest()
+        review_entry = review_manifest.get(config.id, {})
+        metadata.extra["review"] = review_entry
 
         self._persist_metadata(target_dir, metadata)
 
@@ -117,6 +139,14 @@ class IngestConnector:
         )
         if validation_report:
             metadata.extra["validation"] = validation_report.to_dict()
+        self._persist_run_report(
+            target_dir,
+            metadata=metadata,
+            validation=validation_report.to_dict() if validation_report else {},
+            snapshot=snapshot_info,
+        )
+
+        self._persist_snapshot_summary(target_dir, metadata, snapshot_info)
         return result
 
     def _fetch(self, config: SourceConfig) -> CheckedResponse:
@@ -161,6 +191,8 @@ class IngestConnector:
         elif config.type == SourceType.OBO:
             graph_paths.append(str(target_dir / f"{config.id}-json.json"))
         manifest_path = snapshot_dir / "manifest.json"
+        policies = self.context.policies or {}
+        policy = policies.get(config.id)
         manifest = {
             "snapshot_id": f"{config.id}-{int(time.time())}",
             "sources": [
@@ -173,10 +205,12 @@ class IngestConnector:
             "table_paths": {name: str(path) for name, path in table_paths.items()},
             "table_schemas": schema_info,
             "graph_paths": graph_paths,
+            "licensing": {
+                "export_allowed": policy.allow_raw_exports if policy else True,
+                "restricted_fields": list(policy.restricted_fields) if policy else [],
+            },
         }
         snapshot_dir.mkdir(parents=True, exist_ok=True)
-        import json
-
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
         return SnapshotInfo(
             snapshot_id=manifest["snapshot_id"],
@@ -185,6 +219,30 @@ class IngestConnector:
             graph_paths=[Path(p) for p in graph_paths],
             table_schemas=schema_info,
         )
+
+    def _load_review_manifest(self) -> Mapping[str, Mapping[str, object]]:
+        if not self.review_manifest_path.exists():
+            return {}
+        try:
+            return json.loads(self.review_manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+
+    def _persist_snapshot_summary(
+        self,
+        target_dir: Path,
+        metadata,
+        snapshot: Optional[SnapshotInfo],
+    ) -> None:
+        summary_path = target_dir / "summary.json"
+        summary = {
+            "source_id": metadata.source_id,
+            "snapshot_manifest": str(snapshot.manifest_path) if snapshot else None,
+            "review": metadata.extra.get("review", {}),
+            "validation": metadata.extra.get("validation", {}),
+            "telemetry": metadata.extra.get("telemetry", {}),
+        }
+        summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
 
     def _persist_metadata(self, target_dir: Path, metadata) -> None:
         """Serialize run metadata for governance and reproducibility."""
@@ -206,21 +264,44 @@ class IngestConnector:
             "fetch_url": metadata.fetch_url,
             "extra": dict(metadata.extra),
         }
-        import json
-
         metadata_path.write_text(json.dumps(data, indent=2, sort_keys=True))
 
     def _load_previous_metadata(self, target_dir: Path) -> Optional[str]:
         metadata_path = target_dir / "metadata.json"
         if not metadata_path.exists():
             return None
-        import json
-
         try:
             data = json.loads(metadata_path.read_text())
         except json.JSONDecodeError:
             return None
         return data.get("etag")
+
+    def _persist_run_report(
+        self,
+        target_dir: Path,
+        *,
+        metadata,
+        validation: Mapping[str, object],
+        snapshot: Optional[SnapshotInfo],
+    ) -> None:
+        report_path = target_dir / "run.json"
+        report = {
+            "source_id": metadata.source_id,
+            "artifact_path": str(metadata.artifact_path) if metadata.artifact_path else None,
+            "snapshot_manifest": str(snapshot.manifest_path) if snapshot else None,
+            "validation": validation,
+            "metrics": dict(metadata.extra.get("metrics", {})),
+            "license": {
+                "name": metadata.license_name,
+                "export_allowed": metadata.export_allowed,
+                "restricted_fields": list(metadata.restricted_fields),
+                "policy_notes": metadata.policy_notes,
+            },
+        }
+        severity = validation.get("severity") if isinstance(validation, Mapping) else None
+        if severity:
+            report["validation_severity"] = severity
+        report_path.write_text(json.dumps(report, indent=2, sort_keys=True))
 
 
 class ConnectorContextFactory:

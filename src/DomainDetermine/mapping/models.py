@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Iterable, Mapping, Optional, Sequence
 
@@ -39,6 +39,7 @@ class ConceptEntry:
     narrower: Sequence[str] = field(default_factory=tuple)
     mappings: Mapping[str, Sequence[str]] = field(default_factory=dict)
     is_deprecated: bool = False
+    facets: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -50,6 +51,7 @@ class MappingContext:
     language: Optional[str] = None
     coverage_plan_slice_id: Optional[str] = None
     facets: Mapping[str, str] = field(default_factory=dict)
+    allowed_concept_ids: Sequence[str] = field(default_factory=tuple)
 
 
 @dataclass(slots=True)
@@ -97,8 +99,14 @@ class MappingRecord:
     method_metadata: Mapping[str, str]
     kos_snapshot_id: str
     coverage_plan_id: Optional[str]
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     llm_model_ref: Optional[str] = None
+    cost_usd: Optional[float] = None
+    latency_ms: Optional[float] = None
+    reason_code: Optional[str] = None
+    cost_usd: Optional[float] = None
+    latency_ms: Optional[float] = None
+    reason_code: Optional[str] = None
 
 
 @dataclass(slots=True)

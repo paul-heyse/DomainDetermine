@@ -1,4 +1,5 @@
 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 
-<http://example.com/A> skos:prefLabel "Concept A"@en .
+<http://example.com/A> skos:altLabel "Concept A"@en ;
+    skos:prefLabel "Concept A"@en .
 

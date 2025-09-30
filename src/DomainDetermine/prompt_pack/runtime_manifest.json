@@ -1,0 +1,15 @@
+{
+    "templates": [
+        {
+            "id": "mapping_decision",
+            "version": "1.0.0",
+            "schema": {
+                "name": "mapping_decision",
+                "version": "v1"
+            },
+            "policy_id": "mapping_decision_v1",
+            "max_tokens": 256,
+            "token_budget": 2048
+        }
+    ]
+}

@@ -1,0 +1,60 @@
+name: Readiness Pipeline
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # Daily at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          environment-name: readiness
+          cache-downloads: true
+          cache-env: true
+      - name: Install readiness dependencies
+        shell: bash -l {0}
+        run: |
+          micromamba run -n readiness pip install opentelemetry-sdk opentelemetry-exporter-otlp
+      - name: Run readiness pipeline
+        shell: bash -l {0}
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+          READINESS_ENVIRONMENT: staging
+        run: |
+          python -m DomainDetermine.readiness.runner --config .github/readiness/config.yml --workdir ${{ github.workspace }}
+      - name: Generate release manifest
+        shell: bash -l {0}
+        env:
+          READINESS_ENVIRONMENT: staging
+        run: |
+          python -m DomainDetermine.readiness.manifest \
+            --config .github/readiness/release_config.yml \
+            --report readiness_report.json \
+            --output release-manifest.json
+      - name: Evaluate readiness gate
+        shell: bash -l {0}
+        env:
+          READINESS_ENVIRONMENT: staging
+        run: |
+          python -m DomainDetermine.readiness.gate \
+            --manifest release-manifest.json \
+            --config .github/readiness/gate_config.yml \
+            --release-id "${{ github.sha }}"
+      - name: Upload readiness artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readiness-artifacts
+          path: |
+            readiness_logs/
+            readiness_scorecards/
+            readiness_metrics.json
+            readiness_report.json
+            release-manifest.json

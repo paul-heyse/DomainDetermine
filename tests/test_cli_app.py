@@ -11,7 +11,6 @@ from typer.testing import CliRunner
 from DomainDetermine.cli.app import app
 from DomainDetermine.cli.plugins import registry as plugin_registry
 
-
 CONFIG_TEXT = """
 default_context = "dev"
 
@@ -270,5 +269,83 @@ max_batch_size = 100
         env=env,
     )
     assert success.exit_code == 0
+
+
+def test_cli_calibrate_mapping(tmp_path: Path, monkeypatch) -> None:
+    config_path = write_config(tmp_path)
+    gold = tmp_path / "gold.jsonl"
+    gold.write_text("""[{"text": "Competition law", "expected_concept_id": "EV:1"}]""", encoding="utf-8")
+
+    class DummyPipeline:
+        def run(self, items):
+            from DomainDetermine.mapping.models import MappingContext, MappingItem, MappingRecord
+            return type("Batch", (), {
+                "records": (
+                    MappingRecord(
+                        mapping_item=MappingItem(items[0].source_text, MappingContext()),
+                        concept_id="EV:1",
+                        confidence=0.95,
+                        decision_method=type("Method", (), {"value": "llm"})(),
+                        evidence_quotes=("",),
+                        method_metadata={},
+                        kos_snapshot_id="snapshot",
+                        coverage_plan_id=None,
+                    ),
+                ),
+                "metrics": {"resolution_rate": 1.0},
+            })
+
+    import importlib
+    module = importlib.import_module("DomainDetermine.cli.app")
+
+    monkeypatch.setattr(module, "mapping_pipeline_builder", lambda: DummyPipeline())
+    monkeypatch.setitem(
+        module.__dict__,
+        "CalibrationExample",
+        lambda text, expected_concept_id, context: type(
+            "Example",
+            (),
+            {
+                "text": text,
+                "expected_concept_id": expected_concept_id,
+                "context": context,
+            },
+        )(),
+    )
+    monkeypatch.setitem(
+        module.__dict__,
+        "MappingCalibrationSuite",
+        lambda pipeline: type(
+            "Suite",
+            (),
+            {
+                "run": lambda self, examples: type(
+                    "Result",
+                    (),
+                    {
+                        "total": 1,
+                        "resolved": 1,
+                        "correct": 1,
+                        "metrics": {"resolution_rate": 1.0, "accuracy": 1.0},
+                    },
+                )()
+            },
+        ),
+    )
+
+    runner = CliRunner()
+    env = {"DD_CONTEXT_HOME": str(tmp_path / "state")}
+    result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_path),
+            "calibrate-mapping",
+            str(tmp_path / "mapping.json"),
+            str(gold),
+        ],
+        env=env,
+    )
+    assert result.exit_code == 0
 
 

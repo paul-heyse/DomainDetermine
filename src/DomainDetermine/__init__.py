@@ -9,6 +9,7 @@ from .kos_ingestion import __all__ as _kos_ingestion_all
 from .llm import __all__ as _llm_all
 from .mapping import __all__ as _mapping_all
 from .overlay import __all__ as _overlay_all
+from .readiness import __all__ as _readiness_all
 from .service import __all__ as _service_all
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     *_mapping_all,
     *_llm_all,
     *_overlay_all,
+    *_readiness_all,
     *_service_all,
 ]
 

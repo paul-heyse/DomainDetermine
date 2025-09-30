@@ -42,7 +42,8 @@ Artifacts carry **linkage**: each pins upstream versions (e.g., Coverage Plan �
 
 ## Module 1 — KOS Ingestion & Graph Service
 
-**Mission:** Load SKOS/OWL/OBO KOS, normalize to a canonical concept model, expose fast traversal/search, and emit flattened tables for analytics.
+**Mission:** ingest one or more knowledge organization systems (KOS)—taxonomies, thesauri, ontologies—normalize them into a canonical model, expose fast and safe traversal/search/mapping operations, and emit flattened tables for downstream planning.
++> **Implementation note (2025-09):** `DomainDetermine.kos_ingestion` executes fetch→parse→normalize with manifest outputs (`pipeline.IngestConnector`). Search/vector indices and hosted query APIs cited below are pending; downstream modules read Parquet tables in-process via `SnapshotQueryService`.
 
 **Core responsibilities**
 
@@ -67,7 +68,8 @@ Artifacts carry **linkage**: each pins upstream versions (e.g., Coverage Plan �
 
 ## Module 2 — Coverage Planner & Sampler
 
-**Mission:** Convert a concept subtree + constraints into an **auditable Coverage Plan** (strata + quotas) ready for task/eval generation.
+**Mission:** take a set of concepts (often a subtree from Module 1) plus business constraints, and produce an **auditable Coverage Plan**: a table of strata with quotas, facets (locale, difficulty, modality…), and notes—ready for task generation and eval design.
++> Implementation reality: Coverage planner generates plans/diagnostics per spec. Fairness floors/ceilings remain advisory—violations appear in diagnostics rather than blocking the plan.
 
 **Inputs**
 
@@ -182,13 +184,14 @@ Artifacts carry **linkage**: each pins upstream versions (e.g., Coverage Plan �
 **Operational notes**
 
 * Pin hashes for items and grader code; any change bumps version.
-* Keep “fairness slices” where appropriate and lawful.
+* Keep "fairness slices" where appropriate and lawful.
 
 ---
 
 ## Module 7 — Governance, Versioning & Diffs
 
-**Mission:** Make every artifact traceable, reviewable, signable, and reversible.
+**Mission:** make every artifact in the pipeline traceable, reproducible, and reviewable; prevent silent regressions; and enable safe rollbacks. This module establishes the "source-of-truth registry" and the rules for change.
++> Implementation reality: Governance modules implement manifests, versioning, diffing, waivers, and event logging. RBAC/tenancy enforcement and lineage visualization remain on the roadmap; registry persists on local storage today.
 
 **Responsibilities**
 
@@ -414,7 +417,7 @@ Proceed to implement modules in order, wiring each artifact into the governance 
 
 # 15) Exhaustive scope
 
-Below is a deep, **narrative‑only** architecture for the first two modules. I’ll name components, responsibilities, data contracts, and operational concerns, and I’ll reference Python libraries you’d use—without showing code or pseudocode.
+Below is a deep, **narrative‑only** architecture for the first two modules. I'll name components, responsibilities, data contracts, and operational concerns, and I'll reference Python libraries you'd use—without showing code or pseudocode.
 
 ---
 
@@ -425,7 +428,7 @@ Below is a deep, **narrative‑only** architecture for the first two modules. I�
 ### 1) Functional scope & success criteria
 
 * **Scope:** SKOS/RDF thesauri (e.g., EuroVoc, LCSH), OWL ontologies (e.g., FIBO, LKIF Core, SNOMED CT), and OBO ontologies (e.g., GO, ChEBI). Optional: live SPARQL endpoints (e.g., Wikidata).
-* **What “good” looks like:** every concept has a stable identifier, human‑readable labels, definitions/scope notes if available, multilingual variants, normalized broader/narrower links, and cross‑scheme mappings (exactMatch/closeMatch). Queries for “subtree,” “leaves,” “path‑to‑root,” “siblings,” and “find by label/synonym” are constant‑time or cached. A flattened export exists for analytics.
+* **What "good" looks like:** every concept has a stable identifier, human‑readable labels, definitions/scope notes if available, multilingual variants, normalized broader/narrower links, and cross‑scheme mappings (exactMatch/closeMatch). Queries for "subtree," "leaves," "path‑to‑root," "siblings," and "find by label/synonym" are constant‑time or cached. A flattened export exists for analytics.
 
 ### 2) External connectors (ingestion layer)
 
@@ -434,12 +437,14 @@ Below is a deep, **narrative‑only** architecture for the first two modules. I�
   * SKOS/RDF: `rdflib` (Turtle, RDF/XML, JSON‑LD).
   * OWL (DL‑heavy): `owlready2` to materialize classes, object/data properties, axioms.
   * OBO: `pronto` / `obonet` for OBO Graph format.
-* **Remote endpoints:** `SPARQLWrapper` for read‑only SPARQL; HTTP fetch with ETag/Last‑Modified for TTL/XML dumps; optional authentication for licensed KOS.
-* **Licensing guardrails:** per‑source license metadata captured at ingest (e.g., SNOMED CT’s restrictions), with a policy switch that can **block export** of raw IDs/labels when prohibited and only allow derived statistics.
+* **Remote endpoints:** `SPARQLWrapper` for read-only SPARQL; HTTP fetch with ETag/Last-Modified for TTL/XML dumps; optional authentication for licensed KOS.
+* **Licensing guardrails:** per-source license metadata captured at ingest (e.g., SNOMED CT's restrictions), with a policy switch that can **block export** of raw IDs/labels when prohibited and only allow derived statistics.
++> Current implementation: HTTP/SPARQL fetchers support retries, caching, and auth. License policies are recorded in metadata, but automated export blocking awaits downstream enforcement.
+* **Licensing guardrails:** per‑source license metadata captured at ingest (e.g., SNOMED CT's restrictions), with a policy switch that can **block export** of raw IDs/labels when prohibited and only allow derived statistics.
 
 ### 3) Canonical data model (concept‑centric)
 
-Represent every source in a **uniform concept model** so consumers don’t care about native formats:
+Represent every source in a **uniform concept model** so consumers don't care about native formats:
 
 * **Concept identity:** canonical IRI (or CURIE) and a source tag (e.g., `eurovoc`, `fibo`). Maintain both **source_id** and **canonical_id** to survive re‑prefixing or mirror copies.
 * **Labels:** one **preferred label** per language (SKOS `prefLabel`), unlimited alternative labels/synonyms (`altLabel`), plus acronyms and common misspellings when available.
@@ -458,7 +463,7 @@ All of the above is stored twice: (a) **as a graph** in an `rdflib` store for se
 * **Property harmonization:** map SKOS/OWL/OBO properties into the canonical slots above; handle blank nodes; lift literals out of annotations where sensible.
 * **Label normalization:** case folding, Unicode NFC, punctuation trimming; keep both **raw** and **normalized** text to preserve exactness.
 * **Multilingual handling:** choose a **primary locale set** (e.g., English by default) with fallbacks; expose language‑aware search/ranking.
-* **Cycle detection:** detect and record cycles in broader/narrower (shouldn’t exist in well‑formed thesauri) and either break them by policy or quarantine affected nodes.
+* **Cycle detection:** detect and record cycles in broader/narrower (shouldn't exist in well‑formed thesauri) and either break them by policy or quarantine affected nodes.
 * **Deprecation & obsolescence:** mark concepts flagged as deprecated/obsolete in source ontologies; keep mappings to replacements when provided.
 
 ### 5) Storage & indexing strategy
@@ -475,6 +480,7 @@ All of the above is stored twice: (a) **as a graph** in an `rdflib` store for se
 
   * Text: `rapidfuzz` for fuzzy matching; optional `whoosh`/Elasticsearch if you need full‑text.
   * Semantic: optional embedding index (`sentence‑transformers` + `faiss`) over labels/definitions for semantic lookup, kept separate and marked **non‑authoritative**.
++> Implementation status: Snapshot Parquet exports are available; no built-in search/index services yet. Mapping consumes tables through in-memory repositories.
 
 ### 6) Query & traversal service (public API surface)
 
@@ -490,14 +496,14 @@ All of the above is stored twice: (a) **as a graph** in an `rdflib` store for se
 
 ### 7) Data quality & conformance
 
-* **Shape validation:** `pyshacl` to validate SHACL shapes (e.g., “concepts must have at least one prefLabel in any language,” “broader/narrower forms a DAG”).
+* **Shape validation:** `pyshacl` to validate SHACL shapes (e.g., "concepts must have at least one prefLabel in any language," "broader/narrower forms a DAG").
 * **Tabular QA:** `pandera` schemas check uniqueness of IDs, referential integrity between **relations** and **concepts**, non‑empty labels, language tag sanity, no orphan nodes unless flagged.
 * **Editorial checks:** duplicate altLabels under the same parent, conflicting mappings, suspicious definition lengths, and inconsistent capitalization policies.
 
 ### 8) Cross‑scheme alignment (optional but valuable)
 
 * **Mapping sources:** trust explicit `skos:exactMatch` first. Where absent, compute candidate alignments via lexical similarity and, if allowed, semantic similarity, but keep them **provisional** until human‑approved.
-* **Authority policy:** per target domain, define an order of precedence (e.g., “when FIBO and internal ontology disagree, prefer FIBO”). Record the decision in mapping metadata.
+* **Authority policy:** per target domain, define an order of precedence (e.g., "when FIBO and internal ontology disagree, prefer FIBO"). Record the decision in mapping metadata.
 * **Drift control:** lock mapping sets by source version; a new FIBO release spawns a new mapping version and a diff report.
 
 ### 9) Observability, operations, and security
@@ -516,10 +522,10 @@ All of the above is stored twice: (a) **as a graph** in an `rdflib` store for se
 ### 1) Inputs & configuration surface
 
 * **Concept frame:** IDs, labels, depth, ancestor path, leaf flags, deprecation flags, and any domain attributes pulled from Module 1.
-* **Facets:** locale/jurisdiction, language, modality, product line, customer segment, time period, and any policy tags (e.g., “restricted content”).
+* **Facets:** locale/jurisdiction, language, modality, product line, customer segment, time period, and any policy tags (e.g., "restricted content").
 * **Constraints & targets:** total items budget, minimums per branch, fairness goals (e.g., no branch < X%), SLOs (time to first data), and **cost/effort weights** if certain strata are expensive.
 * **Risk/safety rules:** forbidden concepts; jurisdictional constraints; audit requirements.
-* **Historical/observed distribution (optional):** empirical frequencies from a seed corpus to inform allocation (e.g., we see more “US antitrust” than “EU state aid”).
+* **Historical/observed distribution (optional):** empirical frequencies from a seed corpus to inform allocation (e.g., we see more "US antitrust" than "EU state aid").
 
 ### 2) Stratification engine (how strata are defined)
 
@@ -543,11 +549,12 @@ Provide multiple strategies and make the choice explicit in your plan metadata:
 When multiple facets would explode the number of combinations (e.g., `jurisdiction × language × modality × difficulty`), use **pairwise or t‑wise** coverage:
 
 * **Category‑partition modeling:** write facet value sets and constraints (e.g., invalid pairs), then generate a minimal set of combinations that cover all **pairs** (or triples) at least once using a pairwise generator (e.g., `allpairspy`).
-* **Traceability:** tag each generated combination with a **coverage certificate** (e.g., “covers pair (EU, hard) and (contract_redlining, en‑GB)”), so auditors can verify.
+* **Traceability:** tag each generated combination with a **coverage certificate** (e.g., "covers pair (EU, hard) and (contract_redlining, en-GB)"), so auditors can verify.
++> Current state: Pairwise fallback + coverage certificates captured inline in plan provenance. No external certificate artifact or UI yet.
 
 ### 5) Business logic & guardrails
 
-* **Policy filters:** exclude deprecated concepts, forbidden topics, or strata with licensing restrictions; route them to a “quarantined” list with justification.
+* **Policy filters:** exclude deprecated concepts, forbidden topics, or strata with licensing restrictions; route them to a "quarantined" list with justification.
 * **Balance against real‑world prevalence:** optionally tilt quotas toward observed prevalence using a mixing parameter (e.g., 70% proportional to prevalence, 30% uniform to ensure tail coverage).
 * **Risk weighting:** over‑allocate to high‑risk or high‑impact strata (e.g., safety‑critical subtopics) and document the rationale.
 
@@ -578,7 +585,7 @@ When multiple facets would explode the number of combinations (e.g., `jurisdicti
 ### 9) Versioning, diffs, and governance
 
 * **Version each plan** with a semantic version and the **KOS snapshot ID**.
-* **Diffs:** report added/removed concepts, quota deltas by branch, and changes in allocation method; include a human‑readable changelog (“Raised min quotas for EU competition remedies based on pilot error rates”).
+* **Diffs:** report added/removed concepts, quota deltas by branch, and changes in allocation method; include a human‑readable changelog ("Raised min quotas for EU competition remedies based on pilot error rates").
 * **Approvals:** capture reviewer sign‑off and attach source evidence (pilot metrics, risk memos).
 * **Rollbacks:** retain the last N versions; allow rolling back both the Coverage Plan and its upstream KOS snapshot as a pair.
 
@@ -599,7 +606,7 @@ When multiple facets would explode the number of combinations (e.g., `jurisdicti
 ## How the two modules fit together (end‑to‑end narrative)
 
 1. **Ingest** one or more KOS in Module 1; normalize them; validate shapes; produce both a graph and a flattened concept table. Stamp everything with a **snapshot ID**.
-2. **Select a root** (e.g., “competition law”) and materialize a **subtree** with labels/definitions and derived metrics (depth, leaves).
+2. **Select a root** (e.g., "competition law") and materialize a **subtree** with labels/definitions and derived metrics (depth, leaves).
 3. **Hand the subtree** to Module 2 with project constraints (budget, fairness, locale).
 4. **Stratify** by the agreed facets and **allocate quotas** using the chosen strategy (e.g., proportional with fairness floors).
 5. **Audit** the plan; fix imbalances; apply policy filters; re‑run.
@@ -614,7 +621,7 @@ When multiple facets would explode the number of combinations (e.g., `jurisdicti
 
 This architecture gives you a **repeatable, explainable, and auditable** path from high‑level domain to specific, quota‑bearing topic sets—ready for task generation, expert staffing, and eval design.
 
-Absolutely—here’s a **purely narrative, implementation‑level architecture** for the next two modules in the toolchain. As before, I’ll stay code‑free while being concrete about components, data contracts, safeguards, and the Python libraries you’d rely on.
+Absolutely—here's a **purely narrative, implementation‑level architecture** for the next two modules in the toolchain. As before, I'll stay code‑free while being concrete about components, data contracts, safeguards, and the Python libraries you'd rely on.
 
 ---
 
@@ -624,7 +631,8 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 
 ### 1) Mission & success criteria
 
-**Mission:** turn messy inputs (user topics, doc excerpts, headings) into **traceable, auditable links** to concepts in one or more knowledge organization systems (KOS), and maintain **cross‑scheme alignments** (e.g., EuroVoc ↔ LKIF, FIBO ↔ JEL).
+**Mission:** turn messy inputs (user topics, doc excerpts, headings) into **traceable, auditable links** to concepts in one or more knowledge organization systems (KOS), and maintain **cross-scheme alignments** (e.g., EuroVoc ↔ LKIF, FIBO ↔ JEL).
++> Implementation reality: Mapping pipeline covers normalization, candidate generation, LLM decision, and storage. Embedding ANN search, cross-encoder reranking, and evidence-backed crosswalk proposals remain open items; current heuristics rely on lexical overlap and placeholder rationales.
 **Success looks like:** high **precision@1** on mappings, measurable **coverage** of in‑scope topics, **explanations** humans can verify, and stable **versioned crosswalks** with provenance.
 
 ### 2) Inputs and outputs (data contracts)
@@ -648,15 +656,15 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 ### 3) System boundary & trust model
 
 * Treat **Module 1** as *source of truth* for concept identity/labels/definitions/mappings.
-* Treat **LLM outputs as proposals**: never accept an ID outside the supplied candidate set; never create new “authoritative” IDs here (that belongs to Module 4).
-* Maintain a **“no internet at inference”** option for regulated projects; retrieval must be from vetted local corpora.
+* Treat **LLM outputs as proposals**: never accept an ID outside the supplied candidate set; never create new "authoritative" IDs here (that belongs to Module 4).
+* Maintain a **"no internet at inference"** option for regulated projects; retrieval must be from vetted local corpora.
 
 ### 4) Pipeline stages (multi‑pass resolution)
 
 **(A) Normalization & enrichment**
 
 * Text cleaning (Unicode normalization, case folding), language detection, tokenization/lemmatization (e.g., spaCy), acronym expansion (rule lists per domain), and stopword handling per language.
-* Domain prior: use Module 2’s **facet** (e.g., “EU competition law”) to restrict the candidate concept universe up front.
+* Domain prior: use Module 2's **facet** (e.g., "EU competition law") to restrict the candidate concept universe up front.
 
 **(B) Candidate generation (high recall)**
 
@@ -683,7 +691,7 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 **(E) Deterministic policy & fallbacks**
 
 * If the calibrated confidence < threshold or the top two candidates are near‑ties, **defer to human** and add to a review queue.
-* For repeated ambiguous strings (“bond” chemistry vs finance), add **contextual features** (document section type, parent heading, other mapped terms nearby) to bias the decision; log these features.
+* For repeated ambiguous strings ("bond" chemistry vs finance), add **contextual features** (document section type, parent heading, other mapped terms nearby) to bias the decision; log these features.
 
 ### 5) Cross‑scheme alignment (building crosswalks)
 
@@ -708,7 +716,7 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 
 * **Intrinsic**: precision@1 (on a gold set), recall@k (candidate generation), coverage of in‑scope items, ambiguous‑rate, deferral‑rate, and average latency/cost per item.
 * **Extrinsic**: downstream **IAA** on reviewer adjudications; error taxonomy (e.g., sibling confusion, over‑generalization).
-* **Guards**: maximum edit distance for “exact” mappings, minimum definition overlap for acceptance, multilingual mismatch detection (label language ≠ input language).
+* **Guards**: maximum edit distance for "exact" mappings, minimum definition overlap for acceptance, multilingual mismatch detection (label language ≠ input language).
 
 ### 8) Human‑in‑the‑loop operations
 
@@ -744,7 +752,7 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 
 ### 2) Architectural stance: overlay, not overwrite
 
-* Maintain an **extension layer** (your organization’s scheme) that references the base KOS via `skos:broader`/`narrower` and `skos:closeMatch/exactMatch` when appropriate.
+* Maintain an **extension layer** (your organization's scheme) that references the base KOS via `skos:broader`/`narrower` and `skos:closeMatch/exactMatch` when appropriate.
 * Keep each proposed node in **candidate → approved → published** states, with reviewer identity and timestamps.
 * Never mint IDs inside licensed schemes; mint them in your overlay namespace and **map** to base where appropriate.
 
@@ -762,12 +770,12 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 **(A) Candidate mining (non‑LLM sources)**
 
 * **Corpus‑driven**: keyphrase extraction (YAKE/KeyBERT), collocation mining, frequent n‑grams within a branch; filter by POS patterns and stoplists.
-* **Ontology‑driven**: siblings analysis (semantic clustering of siblings’ definitions) to spot “holes” (e.g., missing common subtype).
+* **Ontology‑driven**: siblings analysis (semantic clustering of siblings' definitions) to spot "holes" (e.g., missing common subtype).
 * **External KOS**: lookups in adjacent schemes (e.g., JEL under a FIBO branch) to import structured ideas, not terms.
 
 **(B) LLM proposal generation**
 
-* **Retrieval‑augmented prompts**: pass the parent’s definitions, sibling labels, editorial rules, and **curated corpus snippets**; ask for:
+* **Retrieval‑augmented prompts**: pass the parent's definitions, sibling labels, editorial rules, and **curated corpus snippets**; ask for:
 
   * candidate *names*,
   * **justifications** (with **inline citations to provided snippets**),
@@ -775,20 +783,20 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
   * **difficulty band** with objective criteria,
   * suggested **nearest existing node** (if a split/merge is more appropriate).
 * **Constrained output**: strict JSON schema; controlled vocabularies (difficulty levels, allowed jurisdictions); grammar‑constrained decoding or structured‑output frameworks to prevent drift.
-* **Self‑critique pass**: run a second LLM check to test **non‑overlap**, **annotatability** (“can a reviewer decide with the text at hand?”), and **policy compliance**. The critique must reference rules verbatim.
+* **Self‑critique pass**: run a second LLM check to test **non‑overlap**, **annotatability** ("can a reviewer decide with the text at hand?"), and **policy compliance**. The critique must reference rules verbatim.
 
 **(C) Automated vetting**
 
-* **Duplicate detection**: fuzzy match and embedding similarity against parent’s children and synonyms; thresholded rejection.
+* **Duplicate detection**: fuzzy match and embedding similarity against parent's children and synonyms; thresholded rejection.
 * **Editorial policy checks**: naming style (e.g., noun phrases), maximum length, no ambiguous modifiers; language availability if multilingual is required.
 * **Graph sanity**: no cycles; cardinality rules (e.g., not more than N new children per batch without review).
-* **Evidence validation**: ensure every claim’s citation actually appears in the supplied evidence pack; reject hallucinated citations.
+* **Evidence validation**: ensure every claim's citation actually appears in the supplied evidence pack; reject hallucinated citations.
 
 **(D) Human review & pilot**
 
-* **Triaging UI**: show proposal, evidence quotes, sibling list, and “nearest neighbor” with distances; quick accept/revise/reject actions with reason codes.
+* **Triaging UI**: show proposal, evidence quotes, sibling list, and "nearest neighbor" with distances; quick accept/revise/reject actions with reason codes.
 * **Pilot annotation**: sample 10–30 real items per accepted candidate; measure **IAA** and **throughput**; auto‑demote candidates with poor annotatability.
-* **Finalize**: accepted nodes get overlay IDs, are published to the extension scheme, and are added to Module 2’s **Coverage Plan** with initial quotas.
+* **Finalize**: accepted nodes get overlay IDs, are published to the extension scheme, and are added to Module 2's **Coverage Plan** with initial quotas.
 
 ### 5) Managing splits, merges, and synonyms
 
@@ -826,14 +834,14 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 ### 9) Internationalization & jurisdictional variants
 
 * Require language tags for labels; ensure **at least one** target language is present for publication.
-* Allow **jurisdiction‑scoped children** when a parent concept manifests differently by region (e.g., “Merger control thresholds — EU” vs “— US”).
+* Allow **jurisdiction‑scoped children** when a parent concept manifests differently by region (e.g., "Merger control thresholds — EU" vs "— US").
 * Use cross‑lingual embeddings and bilingual lexicons to detect duplicates across languages; require human validation for translations.
 
 ### 10) Integration with Modules 1–3
 
-* **Reads**: uses Module 1’s graph (definitions, siblings, editorial rules) and Module 2’s coverage gaps.
-* **Writes**: publishes an **overlay scheme** (SKOS/OWL) back into Module 1’s store (as a separate namespace) and emits **Coverage Plan deltas** for Module 2 (new rows + reallocation suggestions).
-* **Feedback loop**: Module 3’s ambiguous mappings trigger **expansion requests**; accepted overlay nodes reduce Module 3’s ambiguity over time.
+* **Reads**: uses Module 1's graph (definitions, siblings, editorial rules) and Module 2's coverage gaps.
+* **Writes**: publishes an **overlay scheme** (SKOS/OWL) back into Module 1's store (as a separate namespace) and emits **Coverage Plan deltas** for Module 2 (new rows + reallocation suggestions).
+* **Feedback loop**: Module 3's ambiguous mappings trigger **expansion requests**; accepted overlay nodes reduce Module 3's ambiguity over time.
 
 ### 11) Observability & governance
 
@@ -852,9 +860,9 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 3. **Module 4** proposes, vets, and pilots new subtopics in an **overlay** until accepted; once published, Module 1 ingests the overlay and Module 2 updates the **Coverage Plan**.
 4. **Module 3** immediately benefits: mappings that used to defer now resolve cleanly to the newly approved overlay nodes, with higher precision and fewer human touches.
 
-This keeps the whole pipeline **auditable, explainable, and evolvable**—and it mirrors the “open‑box” expectations you’ll see from top AI labs: traceable IDs, explicit coverage decisions, and verifiable human oversight at the right points.
+This keeps the whole pipeline **auditable, explainable, and evolvable**—and it mirrors the "open‑box" expectations you'll see from top AI labs: traceable IDs, explicit coverage decisions, and verifiable human oversight at the right points.
 
-Absolutely—here’s a **purely narrative, implementation‑level architecture** for the next two modules in the toolkit. As before, I’ll stay code‑free while being concrete about components, data contracts, QA, governance, and the Python libraries you’d lean on.
+Absolutely—here's a **purely narrative, implementation‑level architecture** for the next two modules in the toolkit. As before, I'll stay code‑free while being concrete about components, data contracts, QA, governance, and the Python libraries you'd lean on.
 
 ---
 
@@ -862,9 +870,10 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 
 *(prove that your Coverage Plan is balanced, policy‑compliant, and auditable before anyone spends on data)*
 
-### 1) Mission & “definition of done”
+### 1) Mission & "definition of done"
 
 **Mission:** validate that the Coverage Plan produced in Module 2 is **complete, balanced, compliant, and explainable**—and generate human‑readable reports (and machine‑readable attestations) that programs, reviewers, and clients can trust.
++> Implementation reality: Auditor enforces structural/fairness checks and governance manifests. Automated license masking/redaction in reports is still pending; outputs currently include raw labels/IDs.
 **Done means:** all structural checks pass; fairness and minimum‑coverage guarantees are met; policy and licensing constraints are respected; drift vs. prior plans is understood; a signed report and machine certificate exist, both tied to a KOS snapshot/version.
 
 ### 2) Inputs & outputs (data contracts)
@@ -894,12 +903,12 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 **B) Fairness & balance engine**
 
 * Computes distributional metrics across branches and facets: per‑branch quota share, **entropy**, **Gini coefficient**, **Herfindahl‑Hirschman Index** for concentration.
-* Applies policy **floors/ceilings** (e.g., “≥1% for each top‑level branch”; “≤40% for any single branch”), with explicit pass/fail flags.
+* Applies policy **floors/ceilings** (e.g., "≥1% for each top‑level branch"; "≤40% for any single branch"), with explicit pass/fail flags.
 * Produces **heatmaps** of quota density by facet (e.g., locale×difficulty), highlighting sparse or saturated cells.
 
 **C) Compliance & policy validator**
 
-* **Licensing guardrails:** if a KOS is restricted, verify that exports don’t leak forbidden fields (e.g., blocks full definition text in downstream artifacts).
+* **Licensing guardrails:** if a KOS is restricted, verify that exports don't leak forbidden fields (e.g., blocks full definition text in downstream artifacts).
 * **Safety filters:** ensure **forbidden topics** are excluded or quarantined; check that **jurisdictional constraints** are respected (e.g., EU content does not leak into US‑only slices).
 * **PII/PHI posture:** confirms the Coverage Plan includes required **redaction flags** where sensitive domains are present and references the correct compliance frameworks in metadata.
 
@@ -954,11 +963,12 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 
 ## Module 6 — **Eval Blueprint Generator (Slices & Metrics)**
 
-*(turn the Coverage Plan into a formal, versioned “Evals‑as‑PRD” suite, with deterministic graders, slice definitions, and reporting contracts)*
+*(turn the Coverage Plan into a formal, versioned "Evals‑as‑PRD" suite, with deterministic graders, slice definitions, and reporting contracts)*
 
-### 1) Mission & “definition of done”
+### 1) Mission & "definition of done"
 
-**Mission:** transform the Coverage Plan into a **formal evaluation specification**—suites, slices, item schemas, graders, metrics, acceptance thresholds, and run‑time parameters—so model quality can be assessed consistently across versions and vendors.
+**Mission:** transform the Coverage Plan into a **formal evaluation specification**—suites, slices, item schemas, graders, metrics, acceptance thresholds, and run-time parameters—so model quality can be assessed consistently across versions and vendors.
++> Implementation reality: Eval suite builder generates manifests, slices, and grader specs. Human review workflows, statistical gating (bootstrap CIs, multiple-comparison correction), and sandboxed execution for code tasks are not yet fully realized.
 **Done means:** there is a **versioned eval suite** that can be executed repeatedly across models, with **deterministic graders** (or well‑specified LLM‑judging protocols), **stable seeds**, and **auditable slice coverage** tied to concept IDs.
 
 ### 2) Inputs & outputs (data contracts)
@@ -983,7 +993,7 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 
 **A) Suite scaffolding**
 
-* Organize by **scenario** (e.g., “M&A issue spotting”, “Prospectus gap detection”), each with a **test type** (classification/extraction/generation/pairwise/agentic).
+* Organize by **scenario** (e.g., "M&A issue spotting", "Prospectus gap detection"), each with a **test type** (classification/extraction/generation/pairwise/agentic).
 * Define **slices** that map directly to Coverage Plan strata: by branch, depth band, locale, difficulty, and any policy tags (e.g., safety‑critical).
 * Allocate **item counts** per slice respecting quotas, with optional **pairwise design** for preference tasks (balanced sampling of positive/negative pairs).
 
@@ -994,7 +1004,7 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 
 **C) Cross‑suite consistency**
 
-* Keep a **global registry** of slices and metrics so a “EU competition hard” slice means the same thing across suites and releases.
+* Keep a **global registry** of slices and metrics so a "EU competition hard" slice means the same thing across suites and releases.
 * Enforce **no concept leakage** between train/dev/test if the same concept space feeds both data creation and evals.
 
 ### 4) Item types & grader contracts
@@ -1036,11 +1046,11 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 
 * **Confidence intervals** via nonparametric bootstrap at the slice and suite levels.
 * **Significance testing** for regressions/improvements with multiple‑comparison correction across slices.
-* **Effect sizes** (e.g., Cohen’s h for proportions) to communicate practical impact.
+* **Effect sizes** (e.g., Cohen's h for proportions) to communicate practical impact.
 
 **Acceptance gates**
 
-* Per‑slice thresholds (e.g., ≥0.85 F1 on “EU competition hard”).
+* Per‑slice thresholds (e.g., ≥0.85 F1 on "EU competition hard").
 * Suite‑level composite thresholds (weighted across critical slices).
 * **Safety blocks**: any policy‑violation slice above threshold fails the suite, regardless of task metrics.
 
@@ -1115,97 +1125,30 @@ Absolutely—here’s a **purely narrative, implementation‑level architecture*
 1. **Module 2** hands Module 5 a Coverage Plan; Module 5 certifies that the plan is structurally sound, balanced, and compliant, producing a **coverage certificate**.
 2. **Module 6** consumes the certified plan + rubric to generate a **versioned eval suite** whose slices mirror the plan; graders are pinned and reproducible.
 3. When **Module 4** publishes overlay expansions (new subtopics), Module 5 re‑audits the plan (new certificate), and Module 6 releases **suite v+1** with corresponding slices.
-4. **Module 3** benefits indirectly: clearer coverage and new overlay nodes reduce mapping ambiguity, which you’ll see reflected as **cleaner error taxonomies** in Module 6 reports.
+4. **Module 3** benefits indirectly: clearer coverage and new overlay nodes reduce mapping ambiguity, which you'll see reflected as **cleaner error taxonomies** in Module 6 reports.
 
 The result is a closed loop: **plan → certify → evaluate → learn → refine**—with each step leaving behind auditable, versioned artifacts that laboratories and compliance teams can verify.
 
-Absolutely—here’s a **purely narrative, implementation‑level architecture** for the remaining pieces: **Module 7 (Governance, Versioning & Diffs)**, the **CLI & service layer**, the **LLM Prompt Pack**, and the small set of **supporting components** that make the whole system auditable, reproducible, and enterprise‑ready. No code or pseudocode—only structure, responsibilities, data contracts, and operational detail. I’ll call out the Python libraries you’d likely use.
+Absolutely—here's a **purely narrative, implementation‑level architecture** for the remaining pieces: **Module 7 (Governance, Versioning & Diffs)**, the **CLI & service layer**, the **LLM Prompt Pack**, and the small set of **supporting components** that make the whole system auditable, reproducible, and enterprise‑ready. No code or pseudocode—only structure, responsibilities, data contracts, and operational detail. I'll call out the Python libraries you'd likely use.
 
 ---
 
 ## Module 7 — **Governance, Versioning & Diffs**
 
-**Mission:** make every artifact in the pipeline traceable, reproducible, and reviewable; prevent silent regressions; and enable safe rollbacks. This module establishes the “source‑of‑truth registry” and the rules for change.
+**Mission:** make every artifact in the pipeline traceable, reproducible, and reviewable; prevent silent regressions; and enable safe rollbacks. This module establishes the "source-of-truth registry" and the rules for change.
++> Implementation reality: Governance modules implement manifests, versioning, diffing, waivers, and event logging. RBAC/tenancy enforcement and lineage visualization remain on the roadmap; registry persists on local storage today.
 
-### 1) Objects under governance (the registry’s scope)
+**Responsibilities**
 
-Treat each as a first‑class, versioned asset with lineage:
+* Registry of artifacts (KOS snapshots, Coverage Plans, Mappings, Overlay, Eval Suites, Prompt Pack, Run Bundles, Certificates).
+* Semantic versioning + content hashes + upstream pins.
+* Release lifecycle: Propose → Build → Audit → Approve → Sign → Publish.
+* Diffs per artifact type; waiver workflow; rollback procedures.
+* RBAC, tenancy, license enforcement; lineage graphs; event log.
 
-1. **KOS snapshots** (from Module 1): raw sources, normalized graph, flattened tables, search/vector indexes, license metadata.
-2. **Coverage Plans** (Module 2): the plan table, allocation method/parameters, policy pack, fairness thresholds, audit certificate (Module 5).
-3. **Mappings & crosswalks** (Module 3): mapping records, candidate logs, proposed cross‑scheme links, adjudication decisions.
-4. **Overlay scheme** (Module 4): proposed/approved extension nodes, synonyms, deprecations, change log.
-5. **Eval suites** (Module 6): manifests, item sets or sampling frames, grader specs, judge protocols, acceptance thresholds.
-6. **Prompt Pack** (below): prompt templates, structured‑output schemas, retrieval policies, red‑team suites.
-7. **Run bundles**: per‑run configs, per‑slice results, grader verdicts, judge outputs, telemetry, cost ledger.
-8. **Certificates & reports**: coverage certificates, evaluation scorecards, signed release notes.
+**Outputs**
 
-Each object has: a unique ID, semantic version, cryptographic hash of content, creator, timestamp, parent(s), and references to upstream objects (e.g., Coverage Plan → KOS snapshot ID).
-
-### 2) Versioning policy
-
-* **Semantic versioning** across all artifacts:
-
-  * **Major**: breaking structure changes or policy shifts (e.g., adding a new facet or metric that affects comparability).
-  * **Minor**: additive but compatible changes (e.g., adding slices, expanding overlay).
-  * **Patch**: corrections with no intended behavioral change (typo fix, label correction).
-* **Content hashing**: compute a normalized hash for every artifact; the registry stores both the declared semantic version and the computed hash.
-* **Linkage rules**: each published artifact pins upstream versions by ID and hash. A Coverage Plan must pin a KOS snapshot; an Eval Suite must pin both a Coverage Plan and the graders.
-
-### 3) Metadata model (what the registry records)
-
-For every artifact: type, version, hash, human title/summary, upstream links, policy pack hash, license tag, change reason code, reviewer(s), approvals, and (if applicable) waiver IDs. Include environment fingerprints for anything executable (library versions, OS, container image digests).
-
-### 4) Release lifecycle
-
-* **Propose → Build → Audit → Approve → Sign → Publish**
-
-  * *Propose*: open a change request with rationale (coverage gap, cost, risk).
-  * *Build*: produce candidate artifact and attach upstream pins.
-  * *Audit*: run defined checks (Module 5 for Coverage; self‑checks for others).
-  * *Approve*: named approvers sign off (domain lead, QA, legal if needed).
-  * *Sign*: cryptographically sign artifact manifests.
-  * *Publish*: push to the registry and mark “current” for the program.
-
-Use a small change‑control board for Major changes; Minor/Patch can follow a lightweight two‑person rule.
-
-### 5) Diffing strategy (per artifact type)
-
-* **KOS snapshots:** report added/removed/renamed concepts, mapping churn, branch size deltas, new deprecations, and license changes.
-* **Coverage Plans:** added/removed strata, quota deltas by branch/facet, fairness metric deltas (entropy, Gini), and allocation‑method changes.
-* **Mappings:** added/removed/overridden decisions; churn by branch; ambiguity‑rate changes; precision/recall vs. gold set (if any).
-* **Overlay scheme:** newly approved nodes, merges/splits, synonyms added, deprecations; net coverage gain measured against observed corpora.
-* **Eval suites:** slice composition changes, item hash churn, grader/judge protocol changes, threshold shifts.
-* **Prompt Pack:** template or schema changes, retrieval policy updates, judge prompts touched.
-* **Run bundles:** model‑to‑model score diffs with CI bands, per‑slice significance markers, cost/latency deltas.
-
-Diffs must be human‑readable (for approvers) and machine‑readable (for audit automation).
-
-### 6) Policy, waivers, and risk acceptance
-
-* **Blocking gates** (cannot publish if failing): referential integrity, licensing compliance, forbidden‑topic exclusions, baseline fairness floors, grader reproducibility.
-* **Advisory gates** (publish with waiver): large drift, low annotator agreement in pilots, slice sparsity.
-* **Waiver records** capture the justification, owner, expiration date, and planned mitigation.
-
-### 7) Rollbacks & disaster recovery
-
-* **Atomic rollbacks**: every “current” pointer can revert to the last green artifact; downstream artifacts warn if their upstream pointer is rolled back.
-* **Replay recipes**: each published run bundle can be re‑executed given the pinned artifacts; store container image digests and environment manifests.
-* **Backups**: replicate the registry and object store across regions; regularly test restore of large artifacts (e.g., item sets) and indexes.
-
-### 8) Observability & audit
-
-* **Lineage graph**: interactive view of artifact dependencies; click through to see diffs and signatures.
-* **Event log**: append‑only, signed events for proposals, approvals, waivers, publishes, rollbacks.
-* **Telemetry**: SLIs/SLOs for publication lead time, audit failure rate, rollback frequency, registry latency.
-
-### 9) Access, tenancy, and licensing
-
-* **RBAC**: creators, reviewers, approvers, auditors, and readers; separate roles for overlay editing vs. KOS ingestion.
-* **Tenancy**: hard separation of client namespaces; artifact cross‑links forbidden unless explicitly shared.
-* **Licenses**: per‑artifact license tags with enforcement policies (e.g., mask restricted labels in public reports).
-
-**Useful Python stack (governance layer):** DVC or LakeFS (data versioning), Git/GitPython (metadata repos), `deepdiff`/`pandas` for tabular diffs, `networkx` for lineage graphs, `hashlib` and a signing tool (Sigstore or GPG bindings), `pydantic` for manifest schemas, `rich`/`textual` for human diffs in terminal.
+* Signed manifests and release notes; lineage views; diff reports.
 
 ---
 
@@ -1216,7 +1159,7 @@ Diffs must be human‑readable (for approvers) and machine‑readable (for audit
 ### 1) Command‑line design (human‑first)
 
 * **Verbs & nouns** mirror the modules: ingest, snapshot, plan, audit, map, expand, certify, evalgen, publish, diff, rollback, run, report.
-* **Idempotency**: repeated invocations with the same inputs produce identical artifacts; “dry‑run” flags show what would change.
+* **Idempotency**: repeated invocations with the same inputs produce identical artifacts; "dry‑run" flags show what would change.
 * **Configuration precedence**: command flags override environment variables, which override project config files; all resolved config is printed for traceability.
 * **Context management**: named contexts (dev, staging, prod; or client A/B) controlling registry endpoints, credentials, and data roots.
 * **Progress & logging**: structured logs to file; concise progress to TTY; optional verbose and JSON logs for CI.
@@ -1231,7 +1174,7 @@ Diffs must be human‑readable (for approvers) and machine‑readable (for audit
 ### 3) Extensibility
 
 * **Plugin hooks**: new KOS loaders, mappers, graders, and report renderers register by entry‑point name; the CLI discovers them at startup.
-* **Profiles**: saved command bundles (e.g., “legal‑pilot‑baseline”) that execute a sequence with pinned versions and thresholds.
+* **Profiles**: saved command bundles (e.g., "legal‑pilot‑baseline") that execute a sequence with pinned versions and thresholds.
 
 ### 4) Service/API layer (automation‑first)
 
@@ -1283,7 +1226,7 @@ Diffs must be human‑readable (for approvers) and machine‑readable (for audit
 
 ---
 
-## Supporting Components (the rest of the “glue”)
+## Supporting Components (the rest of the "glue")
 
 ### A) Reviewer Workbench (HITL)
 
@@ -1330,14 +1273,14 @@ Diffs must be human‑readable (for approvers) and machine‑readable (for audit
 
 ## 1) Environment & prerequisites (pin versions through containers)
 
-**Why containers:** They eliminate host/driver/CUDA mismatches. We use two NVIDIA NGC images: one to **build** engines (TRT‑LLM “release”/“devel”), and one to **serve** (Triton with the TRT‑LLM backend). Confirm aligned versions via **TRT‑LLM release notes** + **Triton release notes** and the backend support matrix. ([NVIDIA GitHub][2])
+**Why containers:** They eliminate host/driver/CUDA mismatches. We use two NVIDIA NGC images: one to **build** engines (TRT‑LLM "release"/ "devel"), and one to **serve** (Triton with the TRT‑LLM backend). Confirm aligned versions via **TRT‑LLM release notes** + **Triton release notes** and the backend support matrix. ([NVIDIA GitHub][2])
 
-1. **GPU/driver**: You have **RTX 5090 (Blackwell, 32 GB GDDR7)**. Keep your NVIDIA driver current enough for the container tag you pick; the container’s CUDA/TensorRT stack will dominate. ([NVIDIA][5])
+1. **GPU/driver**: You have **RTX 5090 (Blackwell, 32 GB GDDR7)**. Keep your NVIDIA driver current enough for the container tag you pick; the container's CUDA/TensorRT stack will dominate. ([NVIDIA][5])
 2. **Docker + NVIDIA Container Toolkit**: Standard setup for GPU access inside containers.
 3. **NGC containers to pull**
 
    * **Build**: `nvcr.io/nvidia/tensorrt-llm/release` (or the **devel** image if you need the full toolchain; both are published in NGC). ([NVIDIA NGC][6])
-   * **Serve**: `nvcr.io/nvidia/tritonserver:<xx.yy>-trtllm-python-py3` (the “trtllm‑python” tag bundles the **TensorRT‑LLM backend**). Pick `<xx.yy>` to match your TRT‑LLM version per the backend’s **support matrix**. ([NVIDIA NGC][7])
+   * **Serve**: `nvcr.io/nvidia/tritonserver:<xx.yy>-trtllm-python-py3` (the "trtllm‑python" tag bundles the **TensorRT‑LLM backend**). Pick `<xx.yy>` to match your TRT‑LLM version per the backend's **support matrix**. ([NVIDIA NGC][7])
 4. **Documentation anchors you will follow** (pin these in your runbook)
 
    * **TRT‑LLM Quick Start & Support Matrix** (model support, features, commands). ([NVIDIA GitHub][8])
@@ -1349,33 +1292,33 @@ Diffs must be human‑readable (for approvers) and machine‑readable (for audit
 ## 2) Get the model (Qwen3‑32B) and freeze a snapshot
 
 * **Source**: Official **Qwen/Qwen3‑32B** on Hugging Face (model card/README). Accept license if required and record the **commit hash** in your build manifest. ([Hugging Face][1])
-* **Evidence of ecosystem availability**: You’ll see Qwen3‑32B variants across HF, GGUF conversions, and third‑party hosting—use **only** the official base for engine builds. ([Hugging Face][10])
+* **Evidence of ecosystem availability**: You'll see Qwen3‑32B variants across HF, GGUF conversions, and third‑party hosting—use **only** the official base for engine builds. ([Hugging Face][10])
 * **Snapshot discipline**: Save the tokenizer files and the exact model revision hash—your build manifest must include these so downstream evals can pin the **engine hash** back to this origin.
 
 ---
 
 ## 3) Engine build (TensorRT‑LLM) — **W4A8 (AWQ) + paged KV**
 
-> Goal: produce a **TensorRT‑LLM engine** for **Qwen3‑32B** with **W4A8**, **paged KV** and **FP8 context FMHA**. This profile is the sweet spot for a single RTX 5090 (32 GB) and aligns with current TRT‑LLM quantization workflows. ([NVIDIA GitHub][2])
+> Goal: produce a **TensorRT‑LLM engine** for **Qwen3‑32B** with **W4A8**, **paged KV** and **FP8 context FMHA**. This profile is the sweet spot for a single RTX 5090 (32 GB) and aligns with current TRT‑LLM quantization workflows. ([NVIDIA GitHub][2])
 
 ### 3.1 Quantization options you will consider
 
-* **W4A8 (AWQ)** = **INT4 weights + 8‑bit activations**. Recommended default for 32B on a single 32 GB card. Recent TRT‑LLM releases also mention **FP8 context FMHA support for the W4A8 workflow**, which increases prefill efficiency. ([NVIDIA GitHub][2])
-* **FP8** (weights/activations) is supported, but for 32B on 32 GB VRAM once you add KV cache and batching, headroom is limited. Reserve FP8 for A/B tests.
+* **W4A8 (AWQ)** = **INT4 weights + 8‑bit activations**. Recommended default for 32B on a single 32 GB card. Recent TRT‑LLM releases also mention **FP8 context FMHA support for the W4A8 workflow**, which increases prefill efficiency. ([NVIDIA GitHub][2])
+* **FP8** (weights/activations) is supported, but for 32B on 32 GB VRAM once you add KV cache and batching, headroom is limited. Reserve FP8 for A/B tests.
 * **Hardware note**: FP8/W4A8 quant flows require **Ada/Hopper/Blackwell‑class** Tensor Cores (your 5090 qualifies). ([NVIDIA Docs][11])
 
 ### 3.2 Conversion & build workflow (repeatable, containerized)
 
 1. **Launch the TRT‑LLM build container** (`…/tensorrt-llm/release`). Follow the **Quick Start Guide** to mount your model directory and a workspace for outputs. ([NVIDIA GitHub][12])
-2. **Convert HF checkpoint → TRT‑LLM checkpoint** using the Qwen/Qwen3 example path indicated in **TRT‑LLM release notes** (“see `examples/models/core/qwen`”). This step normalizes weights/tokenizer and sets up the mapping. ([NVIDIA GitHub][2])
+2. **Convert HF checkpoint → TRT‑LLM checkpoint** using the Qwen/Qwen3 example path indicated in **TRT‑LLM release notes** ("see `examples/models/core/qwen`"). This step normalizes weights/tokenizer and sets up the mapping. ([NVIDIA GitHub][2])
 3. **Apply quantization**
 
-   * For **W4A8**: Use the TRT‑LLM quantization pipeline (AWQ). TRT‑LLM’s quantization blog and docs call out **W4A8** as a first‑class option; ensure your calibration set and per‑layer scales are generated. ([NVIDIA GitHub][13])
+   * For **W4A8**: Use the TRT‑LLM quantization pipeline (AWQ). TRT‑LLM's quantization blog and docs call out **W4A8** as a first‑class option; ensure your calibration set and per‑layer scales are generated. ([NVIDIA GitHub][13])
 4. **Build the engine** with **trtllm‑build** using these principles:
 
    * **Paged context attention** **ON** (enables **KV‑cache reuse** and **chunked context** later): `--use_paged_context_fmha enable`. ([NVIDIA GitHub][14])
    * **KV cache type**: build for **paged** cache; set the **KV quant** you intend to use at runtime (FP8 recommended on Blackwell). TRT‑LLM exposes **`--kv_cache_type`** in the build tool; set it to **paged**. ([NVIDIA GitHub][14])
-   * **FP8 context FMHA**: keep **enabled**; it’s on by default when FP8 is used, and is supported in the W4A8 workflow per release notes. ([NVIDIA GitHub][14])
+   * **FP8 context FMHA**: keep **enabled**; it's on by default when FP8 is used, and is supported in the W4A8 workflow per release notes. ([NVIDIA GitHub][14])
    * **Tokens per block**: the default **32** is fine; smaller blocks waste memory, larger blocks may reduce reuse. Leave default unless profiling dictates otherwise. ([NVIDIA GitHub][14])
    * **Max tokens / batch**: size these to your expected concurrency and context lengths. Remember: KV cache is the real VRAM consumer at runtime.
 5. **Record the build manifest**
@@ -1392,7 +1335,7 @@ We will serve the engine with **Triton Inference Server** using the **TensorRT�
 
 ### 4.1 Pick the correct container tag
 
-Use the NGC image `nvcr.io/nvidia/tritonserver:<xx.yy>-trtllm-python-py3`. The “trtllm‑python” variant bundles the TRT‑LLM backend. Make sure `<xx.yy>` matches your TRT‑LLM release (see release notes and backend repo for aligned versions). ([NVIDIA NGC][7])
+Use the NGC image `nvcr.io/nvidia/tritonserver:<xx.yy>-trtllm-python-py3`. The "trtllm‑python" variant bundles the TRT‑LLM backend. Make sure `<xx.yy>` matches your TRT‑LLM release (see release notes and backend repo for aligned versions). ([NVIDIA NGC][7])
 
 ### 4.2 Model repository layout & required knobs
 
@@ -1402,7 +1345,7 @@ The TRT‑LLM backend repo provides a **reference model repository** under `all_
 
 * **Batching / scheduling**
 
-  * `batching_strategy: inflight_fused_batching` (turns on **in‑flight batching**) and set small **`triton_max_batch_size`** (e.g., 4–8) plus **`max_queue_delay_microseconds`** ~1–3 ms for interactive workloads. ([NVIDIA Docs][15])
+  * `batching_strategy: inflight_fused_batching` (turns on **in‑flight batching**) and set small **`triton_max_batch_size`** (e.g., 4–8) plus **`max_queue_delay_microseconds`** ~1–3 ms for interactive workloads. ([NVIDIA Docs][15])
 * **KV cache & reuse**
 
   * Build already set **paged context**; at serving, enable **KV reuse** (saves prefill cost when prefixes repeat).
@@ -1411,11 +1354,11 @@ The TRT‑LLM backend repo provides a **reference model repository** under `all_
 * **Guided decoding (strict JSON/EBNF)**
 
   * `guided_decoding_backend: xgrammar`.
-  * Python backend needs `tokenizer_dir`; **C++ backend** requires a **tokenizer info JSON** path: `xgrammar_tokenizer_info_path`. Generate it using NVIDIA’s tool (`generate_xgrammar_tokenizer_info.py`) before starting Triton. These fields are **required** when guided decoding is enabled. ([NVIDIA Docs][18])
+  * Python backend needs `tokenizer_dir`; **C++ backend** requires a **tokenizer info JSON** path: `xgrammar_tokenizer_info_path`. Generate it using NVIDIA's tool (`generate_xgrammar_tokenizer_info.py`) before starting Triton. These fields are **required** when guided decoding is enabled. ([NVIDIA Docs][18])
   * Use guided decoding whenever your outputs must conform to a **JSON Schema** (our default in mapping/eval tasks). ([NVIDIA Docs][18])
 * **Decoding modes**
 
-  * Default to greedy/low‑temperature/top‑p as needed. The backend supports **ReDrafter**, **Lookahead**, **Eagle** for speculative decoding; you’ll enable these only for long generations (see §5). ([NVIDIA Docs][9])
+  * Default to greedy/low‑temperature/top‑p as needed. The backend supports **ReDrafter**, **Lookahead**, **Eagle** for speculative decoding; you'll enable these only for long generations (see §5). ([NVIDIA Docs][9])
 
 **Health & perf inputs/outputs:** You can request **`return_perf_metrics`** in inputs to get KV‑cache reuse stats and timings back from the backend, which is helpful for your dashboards. ([NVIDIA Docs][17])
 
@@ -1425,7 +1368,7 @@ The TRT‑LLM backend repo provides a **reference model repository** under `all_
 
 When you encounter long, explanation‑heavy generations (judge rationales, overlay narratives), enable **speculation** for throughput without quality loss:
 
-* Use **ReDrafter** (Apple’s recurrent drafting) or **Lookahead**; both are supported in TRT‑LLM. Start with a short draft length (8–16 tokens) and aim for **acceptance ratio ≥ 0.6**. ([NVIDIA Developer][4])
+* Use **ReDrafter** (Apple's recurrent drafting) or **Lookahead**; both are supported in TRT‑LLM. Start with a short draft length (8–16 tokens) and aim for **acceptance ratio ≥ 0.6**. ([NVIDIA Developer][4])
 * Speculative decoding is configured via the **`tensorrt_llm_bls`** model type in Triton (see docs). You reference your main engine as the **target** and a smaller draft engine for pre‑token proposals. Enable it only when you really need long outputs; not required for our default **schema‑bound** short responses. ([NVIDIA Docs][17])
 
 ---
@@ -1441,7 +1384,7 @@ When you encounter long, explanation‑heavy generations (judge rationales, over
 
 ## 7) Observability & SLOs
 
-Log per request: `engine_hash`, `quant_method: W4A8`, `kv_cache: paged+quant(FP8)`, `guided_decoding: on/off`, `tokens_in/out`, `latency_ms`, `queue_delay_us`, `accept_ratio` (if speculative), and **Prompt Template version**. This mirrors the backend’s telemetry capabilities and lets you correlate performance with configuration. ([NVIDIA Docs][17])
+Log per request: `engine_hash`, `quant_method: W4A8`, `kv_cache: paged+quant(FP8)`, `guided_decoding: on/off`, `tokens_in/out`, `latency_ms`, `queue_delay_us`, `accept_ratio` (if speculative), and **Prompt Template version**. This mirrors the backend's telemetry capabilities and lets you correlate performance with configuration. ([NVIDIA Docs][17])
 
 ---
 
@@ -1449,7 +1392,7 @@ Log per request: `engine_hash`, `quant_method: W4A8`, `kv_cache: paged+quant(FP8
 
 Expose one internal **LLM provider** with three capability methods; all route to the **same Triton model** (Qwen3‑32B engine), only **guided decoding** and **sampling params** change:
 
-1. **`generate_json(schema, prompt, …)`** → Triton **guided decoding** (`guide_type=“json_schema”`, `guide=<schema>`) with **low temperature**. Default path for mapping, rubric aggregation, overlay objects. ([NVIDIA Docs][18])
+1. **`generate_json(schema, prompt, …)`** → Triton **guided decoding** (`guide_type="json_schema"`, `guide=<schema>`) with **low temperature**. Default path for mapping, rubric aggregation, overlay objects. ([NVIDIA Docs][18])
 2. **`rank_candidates(prompt, candidates)`** → same engine, low temperature; grammar restricts `concept_id` to enumerated choices (closed‑set).
 3. **`judge(prompt, reference, …)`** → same engine, low temperature; no guided JSON unless you want structured verdicts; optional **speculative mode** for long rationales.
 
@@ -1457,10 +1400,10 @@ This keeps Modules 3–6 unchanged when you tweak serving knobs; they never see 
 
 ---
 
-## 9) Capacity planning for a single RTX 5090
+## 9) Capacity planning for a single RTX 5090
 
 * **Qwen3‑32B W4A8 + paged FP8 KV**: Expect **~4k token** contexts with interactive latency and small concurrent batches, especially with **in‑flight batching** and tight prompts. KV cache dominates VRAM consumption; paged, quantized KV is essential for this footprint. ([NVIDIA Docs][9])
-* Maintain **20–25% VRAM headroom** to avoid allocator fragmentation and paging thrash; validate with synthetic runs before production. (5090 is **32 GB GDDR7**.) ([NVIDIA][5])
+* Maintain **20–25% VRAM headroom** to avoid allocator fragmentation and paging thrash; validate with synthetic runs before production. (5090 is **32 GB GDDR7**.) ([NVIDIA][5])
 
 ---
 
@@ -1468,7 +1411,7 @@ This keeps Modules 3–6 unchanged when you tweak serving knobs; they never see 
 
 **Day‑0 (build & validate)**
 
-* Pull TRT‑LLM “release” container; convert HF → TRT‑LLM checkpoint; quantize to **W4A8**; `trtllm-build` with **`--use_paged_context_fmha enable`** and **`--kv_cache_type paged`**; record the **engine hash**. ([NVIDIA GitHub][14])
+* Pull TRT‑LLM "release" container; convert HF → TRT‑LLM checkpoint; quantize to **W4A8**; `trtllm-build` with **`--use_paged_context_fmha enable`** and **`--kv_cache_type paged`**; record the **engine hash**. ([NVIDIA GitHub][14])
 * Smoke test with TRT‑LLM quick start clients; confirm outputs match reference answers. ([NVIDIA GitHub][12])
 
 **Day‑1 (serve & calibrate)**
@@ -1509,7 +1452,7 @@ With this design, your entire stack becomes **deterministic, schema‑first, and
 * **One server (Triton + TRT‑LLM backend)** exposing **guided JSON** and **in‑flight batching**;
 * **One provider interface** in your Python codebase, routing all Module 3–6 calls to this server with the right constraints.
 
-This yields fast, stable, and **audit‑ready** behavior for your mapping, overlay, and judge workflows on a single **RTX 5090**.
+This yields fast, stable, and **audit‑ready** behavior for your mapping, overlay, and judge workflows on a single **RTX 5090**.
 
 [1]: https://huggingface.co/Qwen/Qwen3-32B/blob/main/README.md?utm_source=chatgpt.com "README.md · Qwen/Qwen3-32B at main"
 [2]: https://nvidia.github.io/TensorRT-LLM/release-notes.html?utm_source=chatgpt.com "Release Notes — TensorRT-LLM - GitHub Pages"

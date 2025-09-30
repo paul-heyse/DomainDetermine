@@ -1,0 +1,34 @@
+{
+    "template_id": "mapping_decision",
+    "version": "1.0.0",
+    "dataset_path": "calibration.jsonl",
+    "reviewers": [
+        "alice@example.com",
+        "bob@example.com"
+    ],
+    "approvals": [
+        "module-7-review@example.com"
+    ],
+    "license": "internal-use-only",
+    "checksum": "98c822a143f25afc2dfe4c004d9e1bebce65ef4ea957b68e9adfa237a4fcac66",
+    "last_reviewed_at": "2025-09-30T00:00:00+00:00",
+    "provenance": {
+        "source": "mapping governance review",
+        "notes": "Seed calibration cases derived from Module 7 review packet"
+    },
+    "yardstick": {
+        "minimums": {
+            "grounding_fidelity": 0.9,
+            "citation_coverage": 0.95,
+            "acceptance_rate": 0.8
+        },
+        "maximums": {
+            "hallucination_rate": 0.02,
+            "constraint_violations": 0.01
+        }
+    },
+    "expected_metrics": {
+        "latency_ms": 520.0,
+        "cost_usd": 0.18
+    }
+}

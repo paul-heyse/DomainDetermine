@@ -1,0 +1,51 @@
+{
+    "source_id": "local",
+    "snapshot_manifest": "snapshot/local-1717171717/manifest.json",
+    "artifact_path": "artifacts/local/local.ttl",
+    "validation": {
+        "severity": "needs_review",
+        "shacl": {
+            "status": "passed",
+            "conforms": true
+        },
+        "tabular": {
+            "status": "passed",
+            "checks": [
+                {
+                    "name": "concepts.unique_ids",
+                    "status": "passed"
+                },
+                {
+                    "name": "concepts.pref_label_presence",
+                    "status": "passed"
+                },
+                {
+                    "name": "pandera.concepts",
+                    "status": "passed"
+                }
+            ]
+        },
+        "diagnostics": {
+            "summary": {
+                "duplicate_labels": 1,
+                "conflicting_mappings": 0,
+                "definition_length_flags": 0,
+                "capitalization_flags": 2
+            }
+        }
+    },
+    "license": {
+        "name": "test",
+        "export_allowed": false,
+        "restricted_fields": [
+            "pref_label"
+        ],
+        "policy_notes": "SNOMED CT licence prohibits redistribution of raw terms."
+    },
+    "metrics": {
+        "fetch_duration_seconds": 1.24,
+        "normalize_duration_seconds": 0.88,
+        "validation_duration_seconds": 0.42,
+        "bytes_downloaded": 54231
+    }
+}

@@ -30,3 +30,24 @@ Mapping converts free-text topics or document spans into canonical concept IDs a
 - Enforce evidence capture at the data model level and integrate with Reviewer Workbench (Module 8).
 - Plug in vector/embedding similarity for better recall while keeping human approval steps.
 - Extend `crosswalk.py` to import existing mappings (LOINC ↔ SNOMED, etc.) and expose diff reports as per governance requirements.
+
+# Module 3 – Mapping & Crosswalks
+
+## Calibration Suite
+
+Builtin calibration support lives in `DomainDetermine.mapping.calibration`. Use `MappingCalibrationSuite` with a list of `CalibrationExample` items to exercise the pipeline against a gold set.
+
+```python
+from DomainDetermine.mapping import MappingCalibrationSuite, CalibrationExample
+
+suite = MappingCalibrationSuite(pipeline)
+examples = [CalibrationExample("Competition law", "EV:1")]
+result = suite.run(examples)
+print(result.metrics["accuracy"], result.metrics["resolution_rate"])
+```
+
+The suite produces `accuracy`, `resolution_rate`, and reuses the pipeline’s intrinsic metrics. Feed these into governance checks as part of your release gates.
+
+## Guardrails
+
+`DomainDetermine.mapping.policy.MappingPolicyGuardrails` centralizes lexical overlap, edit-distance, and language checks. Configure thresholds with `MappingGuardrailConfig` to mirror the spec’s deterministic fallback requirements and pass a guardrail instance into pipelines or reviewer tools where needed.

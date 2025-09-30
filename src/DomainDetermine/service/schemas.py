@@ -27,16 +27,24 @@ class ReadinessResponse(BaseModel):
     status: str
     pending_migrations: bool
     queue_depth: int
+    slow_queries: List[str] = Field(default_factory=list)
 
 
 class ArtifactCreateRequest(BaseModel):
     name: str
     type: str
     metadata: Optional[Dict[str, str]] = Field(default_factory=dict)
+    content: Optional[str] = Field(
+        default=None,
+        description="Inline artifact payload for development/testing deployments.",
+    )
+    content_type: Optional[str] = Field(default="application/octet-stream")
 
 
 class ArtifactUpdateRequest(BaseModel):
     metadata: Dict[str, str]
+    content: Optional[str] = None
+    content_type: Optional[str] = None
 
 
 class ArtifactResponse(BaseModel):
@@ -46,6 +54,7 @@ class ArtifactResponse(BaseModel):
     metadata: Dict[str, str]
     created_at: datetime
     updated_at: datetime
+    download_available: bool = False
 
 
 class ArtifactListResponse(BaseModel):
@@ -78,4 +87,3 @@ class QuotaResponse(BaseModel):
     limit: int
     used: int
     reset_at: datetime
-

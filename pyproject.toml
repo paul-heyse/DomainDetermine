@@ -4,9 +4,13 @@ version = "0.1.0"
 description = "DomainDetermine"
 readme = "README.md"
 dependencies = [
+    "dash",
+    "anyio",
+    "hypothesis",
+    "pluggy",
+    "typeguard",
     "SPARQLWrapper",
     "allpairspy",
-    "black",
     "duckdb",
     "faiss-cpu",
     "fastapi",
@@ -26,22 +30,43 @@ dependencies = [
     "pyarrow",
     "pydantic",
     "pyjwt",
+    "pyyaml",
     "pyshacl",
-    "pytest",
     "python-json-logger",
     "rapidfuzz",
     "rdflib",
     "rich",
-    "ruff",
     "scikit-learn",
     "scipy",
     "sentence-transformers",
-    "SPARQLWrapper",
     "spacy",
     "statsmodels",
     "tenacity",
+    "transformers",
     "typer[all]",
     "uvicorn",
+]
+
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "mypy",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+service = [
+    "opentelemetry-api",
+    "opentelemetry-exporter-otlp",
+    "opentelemetry-sdk",
+]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+]
+llm = [
     "tensorrt-llm",
 ]
 

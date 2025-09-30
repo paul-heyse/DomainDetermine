@@ -20,9 +20,13 @@ from DomainDetermine.mapping import (
     MappingStorage,
     TextNormalizer,
 )
+from DomainDetermine.prompt_pack import PromptRuntimeManager, RequestBuilder, get_calibration_set
+from DomainDetermine.prompt_pack.metrics import MetricsRepository
 
 duckdb = pytest.importorskip("duckdb")  # noqa: F401  # pragma: no cover
 pyarrow = pytest.importorskip("pyarrow")  # noqa: F401  # pragma: no cover
+
+PROMPT_PACK_ROOT = Path(__file__).resolve().parents[1] / "src/DomainDetermine/prompt_pack"
 
 
 def fake_llm(payload: str) -> dict[str, str]:
@@ -44,6 +48,7 @@ def concept_repository() -> ConceptRepository:
         definition="Laws that promote competition",
         language="en",
         broader=("EV:0",),
+        facets={"domain": "competition"},
     )
     return ConceptRepository({concept.concept_id: concept})
 
@@ -54,7 +59,7 @@ def pipeline(concept_repository: ConceptRepository, tmp_path: Path) -> MappingPi
     scorer = CandidateScorer()
     decision = LLMDecisionEngine(model_ref="test-model", llm_callable=fake_llm, confidence_threshold=0.8)
     crosswalk = CrosswalkProposer(target_schemes=("LKIF",))
-    normalizer = TextNormalizer()
+    normalizer = TextNormalizer(acronym_maps={"en": {"EU": "European Union"}})
     schema_registry = SchemaRegistry(tmp_path / "schemas")
     schema_registry.register(
         SchemaRecord(
@@ -72,11 +77,26 @@ def pipeline(concept_repository: ConceptRepository, tmp_path: Path) -> MappingPi
         )
     )
 
-    class StubProvider:
+    class StubProvider(TritonLLMProvider):
         def __init__(self) -> None:
+            super().__init__(
+                ProviderConfig(
+                    endpoint="http://localhost",
+                    model_name="test",
+                    tokenizer_dir=tmp_path,
+                    engine_hash="hash",
+                    quantisation="w4a8",
+                    readiness_thresholds={
+                        "max_queue_delay_us": 100.0,
+                        "max_tokens": 500.0,
+                        "max_cost_usd": 0.5,
+                    },
+                    price_per_token=0.0001,
+                )
+            )
             self.calls: list[tuple[dict[str, object], str]] = []
 
-        def generate_json(self, schema, prompt: str, max_tokens: int = 256):
+        def generate_json(self, schema, prompt: str, *, schema_id: str, max_tokens: int = 256):  # type: ignore[override]
             self.calls.append((schema, prompt))
             data = json.loads(prompt)
             return {
@@ -85,6 +105,9 @@ def pipeline(concept_repository: ConceptRepository, tmp_path: Path) -> MappingPi
                 "evidence": json.dumps(["Definition snippet"]),
                 "prompt_hash": "stub",
             }
+
+        def rank_candidates(self, payload):  # type: ignore[override]
+            return {"scores": [0.8 for _ in payload.get("candidates", [])]}
 
     provider = StubProvider()
 
@@ -96,11 +119,12 @@ def pipeline(concept_repository: ConceptRepository, tmp_path: Path) -> MappingPi
         crosswalk_proposer=crosswalk,
         llm_provider=provider,  # type: ignore[arg-type]
         schema_registry=schema_registry,
+        cross_encoder_model="stub",
     )
 
 
 def test_pipeline_resolves_item(pipeline: MappingPipeline) -> None:
-    item = MappingItem("EU competition law", MappingContext())
+    item = MappingItem("EU competition law", MappingContext(facets={"domain": "competition"}))
     result = pipeline.run([item])
     assert result.records
     record = result.records[0]
@@ -130,3 +154,61 @@ def test_mapping_report(tmp_path: Path, pipeline: MappingPipeline) -> None:
     assert data["records"] == 1
 
 
+def test_prompt_runtime_manager_loads_mapping_template() -> None:
+    metrics = MetricsRepository()
+    manager = PromptRuntimeManager(PROMPT_PACK_ROOT, metrics=metrics)
+    runtime = manager.get("mapping_decision", "1.0.0")
+    context = {
+        "concept_definition": "Competition law governs antitrust.",
+        "scope_note": "Applies across EU jurisdictions.",
+        "mapping_context": "Sample context that should be filtered out",
+    }
+    rendered = manager.render_prompt(runtime, context)
+    assert "Competition law governs antitrust." in rendered
+    result = manager.validate_response(
+        runtime,
+        {
+            "concept_id": "EV:1",
+            "confidence": 0.95,
+            "evidence": ["Competition law governs antitrust."],
+        },
+        context=context,
+        locale="en-US",
+    )
+    assert result.metrics["grounding_fidelity"] == 1.0
+    snapshot = metrics.as_dict()
+    entry = snapshot["mapping_decision:1.0.0"]
+    assert entry["locales"]["en-US"]["grounding_fidelity"] == 1.0
+
+
+def test_request_builder_enforces_policies() -> None:
+    metrics = MetricsRepository()
+    manager = PromptRuntimeManager(PROMPT_PACK_ROOT, metrics=metrics)
+    builder = RequestBuilder(manager)
+    context = {
+        "concept_definition": "Competition law governs antitrust.",
+        "scope_note": "Applies across EU jurisdictions.",
+        "mapping_context": "Filtered out",
+    }
+    request = builder.build("mapping_decision", "1.0.0", context)
+    assert "Filtered out" not in request.prompt
+    runtime = manager.get("mapping_decision", "1.0.0")
+    builder.validate_citations(
+        runtime,
+        {
+            "concept_id": "EV:1",
+            "confidence": 0.9,
+            "evidence": ["Competition law governs antitrust."],
+        },
+        request,
+    )
+
+
+def test_request_builder_warmup_uses_calibration() -> None:
+    metrics = MetricsRepository()
+    manager = PromptRuntimeManager(PROMPT_PACK_ROOT, metrics=metrics)
+    builder = RequestBuilder(manager)
+    warmup_requests = list(builder.warmup("mapping_decision", "1.0.0"))
+    calibration = get_calibration_set("mapping_decision", "1.0.0")
+    assert warmup_requests
+    assert len(warmup_requests) == len(tuple(calibration))

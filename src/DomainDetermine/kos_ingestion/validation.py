@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-import pandera as pa
+import pandas as pd
+import pandera.pandas as pa
 from rdflib import Graph
 
 from .canonical import SnapshotTables
@@ -40,12 +41,30 @@ class ValidationResult:
 
     shacl: Mapping[str, Any] = field(default_factory=dict)
     tabular: Mapping[str, Any] = field(default_factory=dict)
+    diagnostics: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "shacl": dict(self.shacl),
             "tabular": dict(self.tabular),
+            "diagnostics": dict(self.diagnostics),
+            "severity": self.severity(),
         }
+
+    def severity(self) -> str:
+        if self.shacl.get("status") == "failed" or self.shacl.get("status") == "error":
+            return "blocker"
+        if self.tabular.get("status") == "failed":
+            return "blocker"
+        summary = self.diagnostics.get("summary", {})
+        significant_diagnostics = any(summary.get(name, 0) > 0 for name in (
+            "duplicate_labels",
+            "conflicting_mappings",
+            "definition_length_flags",
+        ))
+        if significant_diagnostics:
+            return "needs_review"
+        return "passed"
 
 
 class KOSValidator:
@@ -70,7 +89,8 @@ class KOSValidator:
 
         shacl_result = self._run_shacl_validation(config, parser_output)
         tabular_result = self._run_tabular_checks(tables)
-        return ValidationResult(shacl=shacl_result, tabular=tabular_result)
+        diagnostics = self._generate_editorial_diagnostics(tables)
+        return ValidationResult(shacl=shacl_result, tabular=tabular_result, diagnostics=diagnostics)
 
     # ------------------------------------------------------------------
     # SHACL
@@ -190,6 +210,169 @@ class KOSValidator:
 
         return summary
 
+    def _generate_editorial_diagnostics(self, tables: SnapshotTables) -> Dict[str, Any]:
+        diagnostics: Dict[str, Any] = {
+            "duplicate_labels": [],
+            "conflicting_mappings": [],
+            "definition_length_flags": [],
+            "capitalization_flags": [],
+        }
+
+        labels = tables.labels.copy()
+        if not labels.empty:
+            labels["language"] = labels["language"].fillna("")
+            preferred_series = labels.get("is_preferred")
+            if preferred_series is None:
+                preferred_series = pd.Series([False] * len(labels), index=labels.index)
+            alt_mask = ~preferred_series.fillna(False).astype(bool)
+            alt_labels = labels[alt_mask].copy()
+            preferred_lookup = {
+                (row.concept_id, (row.language or "")): str(row.text or "")
+                for row in labels[preferred_series.fillna(False)].itertuples()
+            }
+            if not alt_labels.empty:
+                duplicate_groups = (
+                    alt_labels.groupby(["concept_id", "text", "language"], dropna=False)
+                    .size()
+                    .reset_index(name="count")
+                )
+                duplicate_groups = duplicate_groups[duplicate_groups["count"] > 1]
+                for row in duplicate_groups.itertuples():
+                    diagnostics["duplicate_labels"].append(
+                        {
+                            "concept_id": str(row.concept_id),
+                            "label": row.text,
+                            "language": row.language,
+                            "count": int(row.count),
+                            "reason": "duplicate_alt_label",
+                        }
+                    )
+
+                for row in alt_labels.itertuples():
+                    key = (row.concept_id, (row.language or ""))
+                    preferred_text = preferred_lookup.get(key)
+                    alt_text = str(getattr(row, "text", "") or "")
+                    if not preferred_text:
+                        continue
+                    if preferred_text.strip().lower() == alt_text.strip().lower():
+                        diagnostics["duplicate_labels"].append(
+                            {
+                                "concept_id": str(row.concept_id),
+                                "label": alt_text,
+                                "language": row.language or "",
+                                "count": 1,
+                                "reason": "matches_preferred_label",
+                            }
+                        )
+
+            capitalization_flags: List[Dict[str, Any]] = []
+            cap_seen: set[Tuple[str, str, str]] = set()
+            for row in labels.itertuples():
+                text = str(getattr(row, "text", "") or "")
+                if not text:
+                    continue
+                concept_id = str(getattr(row, "concept_id", ""))
+                is_preferred = bool(getattr(row, "is_preferred", False))
+
+                if text.strip() != text:
+                    key = (concept_id, text, "whitespace")
+                    if key not in cap_seen:
+                        cap_seen.add(key)
+                        capitalization_flags.append(
+                            {
+                                "concept_id": concept_id,
+                                "label": text,
+                                "reason": "whitespace",
+                            }
+                        )
+
+                if text.isupper() and len(text) > 4:
+                    key = (concept_id, text, "all_caps")
+                    if key not in cap_seen:
+                        cap_seen.add(key)
+                        capitalization_flags.append(
+                            {
+                                "concept_id": concept_id,
+                                "label": text,
+                                "reason": "all_caps",
+                            }
+                        )
+
+                if is_preferred and text.islower() and len(text) > 4:
+                    key = (concept_id, text, "preferred_lowercase")
+                    if key not in cap_seen:
+                        cap_seen.add(key)
+                        capitalization_flags.append(
+                            {
+                                "concept_id": concept_id,
+                                "label": text,
+                                "reason": "preferred_lowercase",
+                            }
+                        )
+
+            diagnostics["capitalization_flags"] = capitalization_flags
+
+        mappings = tables.mappings
+        if not mappings.empty and {"subject_id", "target_scheme", "target_id", "mapping_type"}.issubset(
+            set(mappings.columns)
+        ):
+            conflict_groups = (
+                mappings.groupby(["subject_id", "target_scheme", "target_id"])["mapping_type"]
+                .nunique()
+                .reset_index(name="mapping_type_count")
+            )
+            conflict_groups = conflict_groups[conflict_groups["mapping_type_count"] > 1]
+            for row in conflict_groups.itertuples():
+                subset = mappings[
+                    (mappings["subject_id"] == row.subject_id)
+                    & (mappings["target_scheme"] == row.target_scheme)
+                    & (mappings["target_id"] == row.target_id)
+                ]
+                diagnostics["conflicting_mappings"].append(
+                    {
+                        "subject_id": str(row.subject_id),
+                        "target_scheme": row.target_scheme,
+                        "target_id": row.target_id,
+                        "mapping_types": sorted(subset["mapping_type"].dropna().unique().tolist()),
+                    }
+                )
+
+        concepts = tables.concepts
+        if not concepts.empty and "definition" in concepts.columns:
+            definitions = concepts[["canonical_id", "definition"]].dropna(subset=["definition"]).copy()
+            if not definitions.empty:
+                definitions["definition_length"] = definitions["definition"].astype(str).str.len()
+                min_len = 15
+                max_len = 400
+                short_defs = definitions[definitions["definition_length"] < min_len]
+                long_defs = definitions[definitions["definition_length"] > max_len]
+
+                for row in short_defs.itertuples():
+                    diagnostics["definition_length_flags"].append(
+                        {
+                            "concept_id": str(row.canonical_id),
+                            "length": int(row.definition_length),
+                            "severity": "too_short",
+                        }
+                    )
+
+                for row in long_defs.itertuples():
+                    diagnostics["definition_length_flags"].append(
+                        {
+                            "concept_id": str(row.canonical_id),
+                            "length": int(row.definition_length),
+                            "severity": "too_long",
+                        }
+                    )
+
+        diagnostics["summary"] = {
+            "duplicate_labels": len(diagnostics["duplicate_labels"]),
+            "conflicting_mappings": len(diagnostics["conflicting_mappings"]),
+            "definition_length_flags": len(diagnostics["definition_length_flags"]),
+            "capitalization_flags": len(diagnostics["capitalization_flags"]),
+        }
+        return diagnostics
+
     def _run_pandera_checks(self, tables: SnapshotTables) -> Dict[str, Any]:
         summary = {
             "status": "passed",
@@ -247,4 +430,3 @@ class KOSValidator:
             _pa_check("pandera.labels", labels_schema, tables.labels)
 
         return summary
-

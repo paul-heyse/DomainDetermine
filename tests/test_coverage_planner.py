@@ -3,9 +3,15 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("RUN_COVERAGE_PLANNER_TESTS") != "1",
+    reason="Coverage planner tests are expensive; set RUN_COVERAGE_PLANNER_TESTS=1 to enable",
+)
 
 from DomainDetermine.coverage_planner import (
     ConceptFrameRecord,

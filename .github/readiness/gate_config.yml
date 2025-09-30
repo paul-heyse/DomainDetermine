@@ -1,0 +1,6 @@
+enforce_approvals: false
+required_roles:
+  - change-board
+require_rehearsal: true
+max_rehearsal_age_days: 30
+disallow_waivers: false

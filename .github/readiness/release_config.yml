@@ -1,0 +1,15 @@
+release: "{{GITHUB_SHA}}"
+artifacts:
+  - name: "service-api"
+    version: "{{GITHUB_SHA}}"
+    hash: "{{GITHUB_SHA}}"
+feature_flags: []
+secrets: []
+migrations: []
+approvals: []
+rollback_plan:
+  trigger: "manual"
+  steps: []
+  rehearsed_at: ""
+metadata:
+  environment: "{{READINESS_ENVIRONMENT}}"

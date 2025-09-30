@@ -26,6 +26,20 @@ class GovernanceEventType(str, Enum):
     PUBLISH_COMPLETED = "publish_completed"
     ROLLBACK_INITIATED = "rollback_initiated"
     ROLLBACK_COMPLETED = "rollback_completed"
+    PROMPT_PUBLISHED = "prompt_published"
+    PROMPT_ROLLED_BACK = "prompt_rolled_back"
+    PROMPT_QUALITY_ALERT = "prompt_quality_alert"
+    LLM_ENGINE_PUBLISHED = "llm_engine_published"
+    LLM_WARMUP_COMPLETED = "llm_warmup_completed"
+    LLM_WARMUP_FAILED = "llm_warmup_failed"
+    LLM_ROLLBACK_COMPLETED = "llm_rollback_completed"
+    LLM_OBSERVABILITY_ALERT = "llm_observability_alert"
+    SERVICE_JOB_ENQUEUED = "service_job_enqueued"
+    SERVICE_JOB_COMPLETED = "service_job_completed"
+    SERVICE_JOB_FAILED = "service_job_failed"
+    SERVICE_JOB_QUOTA_EXCEEDED = "service_job_quota_exceeded"
+    MAPPING_BATCH_PUBLISHED = "mapping_batch_published"
+    MAPPING_REVIEW_REQUIRED = "mapping_review_required"
 
 
 @dataclass(slots=True)
@@ -122,8 +136,198 @@ class GovernanceEventLog:
         )
 
 
+def log_llm_engine_published(log: GovernanceEventLog, artifact: ArtifactRef, actor: str, payload: Mapping[str, object]) -> GovernanceEvent:
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.LLM_ENGINE_PUBLISHED,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_llm_warmup_completed(log: GovernanceEventLog, artifact: ArtifactRef, actor: str, payload: Mapping[str, object]) -> GovernanceEvent:
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.LLM_WARMUP_COMPLETED,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_llm_warmup_failed(log: GovernanceEventLog, artifact: ArtifactRef, actor: str, payload: Mapping[str, object]) -> GovernanceEvent:
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.LLM_WARMUP_FAILED,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_llm_rollback_completed(log: GovernanceEventLog, artifact: ArtifactRef, actor: str, payload: Mapping[str, object]) -> GovernanceEvent:
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.LLM_ROLLBACK_COMPLETED,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_llm_observability_alert(log: GovernanceEventLog, artifact: ArtifactRef, actor: str, payload: Mapping[str, object]) -> GovernanceEvent:
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.LLM_OBSERVABILITY_ALERT,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_service_job_event(
+    log: GovernanceEventLog,
+    *,
+    event_type: GovernanceEventType,
+    artifact: ArtifactRef,
+    actor: str,
+    payload: Mapping[str, object],
+) -> GovernanceEvent:
+    if event_type not in {
+        GovernanceEventType.SERVICE_JOB_ENQUEUED,
+        GovernanceEventType.SERVICE_JOB_COMPLETED,
+        GovernanceEventType.SERVICE_JOB_FAILED,
+        GovernanceEventType.SERVICE_JOB_QUOTA_EXCEEDED,
+    }:
+        raise ValueError("Invalid service job event type")
+    event = GovernanceEvent(
+        event_type=event_type,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_prompt_published(
+    log: GovernanceEventLog,
+    *,
+    artifact: ArtifactRef,
+    actor: str,
+    payload: Mapping[str, object],
+) -> GovernanceEvent:
+    """Append a prompt published event."""
+
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.PROMPT_PUBLISHED,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_prompt_rolled_back(
+    log: GovernanceEventLog,
+    *,
+    artifact: ArtifactRef,
+    actor: str,
+    payload: Mapping[str, object],
+) -> GovernanceEvent:
+    """Append a prompt rollback event."""
+
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.PROMPT_ROLLED_BACK,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_prompt_quality_alert(
+    log: GovernanceEventLog,
+    *,
+    artifact: ArtifactRef,
+    actor: str,
+    payload: Mapping[str, object],
+) -> GovernanceEvent:
+    """Append a prompt quality alert event for KPI regressions."""
+
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.PROMPT_QUALITY_ALERT,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_prompt_waiver_granted(
+    log: GovernanceEventLog,
+    *,
+    artifact: ArtifactRef,
+    actor: str,
+    payload: Mapping[str, object],
+) -> GovernanceEvent:
+    """Append a prompt waiver granted event."""
+
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.WAIVER_GRANTED,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_mapping_batch_published(
+    log: GovernanceEventLog,
+    *,
+    artifact: ArtifactRef,
+    actor: str,
+    payload: Mapping[str, object],
+) -> GovernanceEvent:
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.MAPPING_BATCH_PUBLISHED,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
+def log_mapping_review_required(
+    log: GovernanceEventLog,
+    *,
+    artifact: ArtifactRef,
+    actor: str,
+    payload: Mapping[str, object],
+) -> GovernanceEvent:
+    event = GovernanceEvent(
+        event_type=GovernanceEventType.MAPPING_REVIEW_REQUIRED,
+        artifact=artifact,
+        actor=actor,
+        payload=payload,
+    )
+    return log.append(event)
+
+
 __all__ = [
     "GovernanceEvent",
     "GovernanceEventLog",
     "GovernanceEventType",
+    "log_prompt_published",
+    "log_prompt_rolled_back",
+    "log_prompt_quality_alert",
+    "log_prompt_waiver_granted",
+    "log_llm_engine_published",
+    "log_llm_observability_alert",
+    "log_llm_rollback_completed",
+    "log_llm_warmup_completed",
+    "log_llm_warmup_failed",
+    "log_service_job_event",
+    "log_mapping_batch_published",
+    "log_mapping_review_required",
 ]

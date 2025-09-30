@@ -18,6 +18,7 @@ class BackupManifest:
     artifacts: Sequence[str]
     verification_hash: str
     replication_targets: Sequence[str]
+    llm_artifacts: Sequence[Mapping[str, object]] = field(default_factory=tuple)
 
     def to_dict(self) -> Mapping[str, object]:
         return {
@@ -26,6 +27,7 @@ class BackupManifest:
             "artifacts": list(self.artifacts),
             "verification_hash": self.verification_hash,
             "replication_targets": list(self.replication_targets),
+            "llm_artifacts": [dict(artifact) for artifact in self.llm_artifacts],
         }
 
 

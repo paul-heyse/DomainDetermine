@@ -51,6 +51,9 @@ def artifact_root(tmp_path: Path) -> Path:
 @pytest.fixture
 def context(artifact_root: Path) -> ConnectorContext:
     policy = LicensingPolicy(name="test", allow_raw_exports=False, restricted_fields={"pref_label"})
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    review_manifest = artifact_root / "reviews.json"
+    review_manifest.write_text(json.dumps({"local": {"reviewer": "alice", "status": "approved"}}), encoding="utf-8")
     return ConnectorContext(artifact_root=artifact_root, policies={"test": policy})
 
 
@@ -112,8 +115,21 @@ def test_ingest_local_skos(tmp_path: Path, context: ConnectorContext) -> None:
     check_names = {check["name"] for check in tabular_summary["checks"]}
     assert {"concepts.unique_ids", "concepts.pref_label_presence", "pandera.concepts"}.issubset(check_names)
     assert result.query_service is not None
+    validation = result.metadata.extra["validation"]
+    diagnostics = validation.get("diagnostics")
+    assert diagnostics is not None and "summary" in diagnostics
+    assert validation["severity"] == "passed"
     concept = result.query_service.get_concept("http://example.com/A")
     assert concept["canonical_id"] == "http://example.com/A"
+
+    run_path = context.artifact_root / config.id / "run.json"
+    assert run_path.exists()
+    run_summary = json.loads(run_path.read_text())
+    assert run_summary["validation_severity"] == "passed"
+    assert run_summary["license"]["export_allowed"] is False
+    metadata = result.metadata.extra
+    assert "telemetry" in metadata
+    assert "fetch_duration" in metadata["telemetry"]
 
 
 def test_ingest_remote_with_custom_fetcher(tmp_path: Path, context: ConnectorContext) -> None:
@@ -137,7 +153,22 @@ def test_ingest_remote_with_custom_fetcher(tmp_path: Path, context: ConnectorCon
     assert "validation" in result.metadata.extra
 
 
-def test_skip_delta_when_etag_matches(tmp_path: Path, context: ConnectorContext) -> None:
+def test_skip_delta_when_etag_matches(tmp_path: Path, context: ConnectorContext, monkeypatch) -> None:
+    class DummyOntology:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+        def terms(self):
+            return []
+
+        def relationships(self):
+            return []
+
+        def dump(self, target_path: Path, format: str = "json") -> None:  # noqa: ARG002
+            Path(target_path).write_text("{}")
+
+    monkeypatch.setattr("DomainDetermine.kos_ingestion.parsers.pronto.Ontology", DummyOntology)
+
     config = SourceConfig(
         id="remote",
         type=SourceType.OBO,

@@ -15,8 +15,16 @@ jobs:
           environment-name: ci
           cache-downloads: true
           cache-env: true
+      - name: Install project extras
+        shell: bash -l {0}
+        run: |
+          micromamba run -n ci pip install -e .[dev,service]
       - name: Run tests
         shell: bash -l {0}
         run: |
-          python -V
-          pytest -q
+          micromamba run -n ci python -V
+          micromamba run -n ci pytest -q
+      - name: Lint
+        shell: bash -l {0}
+        run: |
+          micromamba run -n ci ruff check src tests

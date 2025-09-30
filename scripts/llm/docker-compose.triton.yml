@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+    triton:
+        image: nvcr.io/nvidia/tritonserver:24.05-trtllm-python-py3
+        restart: unless-stopped
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - capabilities: [ gpu ]
+        environment:
+            - CUDA_VISIBLE_DEVICES=0
+        ports:
+            - "8000:8000"
+            - "8001:8001"
+            - "8002:8002"
+        volumes:
+            - ../triton/model_repository:/models
+            - ../workspace:/workspace
+        command: [ "tritonserver", "--model-repository=/models", "--log-verbose=0" ]

@@ -1,0 +1,89 @@
+{
+    "snapshot_id": "local-1717171717",
+    "sources": [
+        {
+            "id": "local",
+            "type": "skos",
+            "location": "file:///artifacts/local/local.ttl",
+            "license": {
+                "name": "test",
+                "export_allowed": false,
+                "restricted_fields": [
+                    "pref_label"
+                ]
+            }
+        }
+    ],
+    "table_schemas": {
+        "concepts": {
+            "canonical_id": "string",
+            "preferred_label": "string",
+            "definition": "string",
+            "language": "string",
+            "depth": "int64",
+            "is_leaf": "bool",
+            "descendant_count": "int64"
+        },
+        "labels": {
+            "concept_id": "string",
+            "text": "string",
+            "language": "string",
+            "is_preferred": "bool",
+            "kind": "string"
+        },
+        "relations": {
+            "subject_id": "string",
+            "predicate": "string",
+            "object_id": "string"
+        },
+        "paths": {
+            "concept_id": "string",
+            "ancestor_ids": "list[string]",
+            "ancestor_count": "int64"
+        }
+    },
+    "table_hashes": {
+        "concepts": "sha256-1e4b3d7d",
+        "labels": "sha256-a2cf0080",
+        "relations": "sha256-93b4e912",
+        "paths": "sha256-c1aa6f22"
+    },
+    "graph_paths": [
+        "snapshot/local-1717171717/local-graph.ttl"
+    ],
+    "license_notes": [
+        "SNOMED CT licence prohibits redistribution of pref_label"
+    ],
+    "validation_report": {
+        "shacl": {
+            "status": "passed",
+            "conforms": true
+        },
+        "tabular": {
+            "status": "passed",
+            "checks": [
+                {
+                    "name": "concepts.unique_ids",
+                    "status": "passed"
+                },
+                {
+                    "name": "concepts.pref_label_presence",
+                    "status": "passed"
+                },
+                {
+                    "name": "pandera.concepts",
+                    "status": "passed"
+                }
+            ]
+        },
+        "diagnostics": {
+            "summary": {
+                "duplicate_labels": 0,
+                "conflicting_mappings": 0,
+                "definition_length_flags": 0,
+                "capitalization_flags": 0
+            }
+        },
+        "severity": "passed"
+    }
+}
