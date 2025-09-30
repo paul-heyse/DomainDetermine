@@ -12,6 +12,7 @@ from .models import (
     MappingContext,
     MappingItem,
     MappingRecord,
+    MappingReviewQueueEntry,
 )
 from .normalization import TextNormalizer
 from .persistence import MappingManifestWriter
@@ -35,6 +36,7 @@ __all__ = [
     "MappingBatchResult",
     "MappingContext",
     "MappingItem",
+    "MappingReviewQueueEntry",
     "MappingManifestWriter",
     "MappingPipeline",
     "MappingRecord",

@@ -61,7 +61,7 @@ class MappingItem:
     source_text: str
     context: MappingContext = field(default_factory=MappingContext)
     offset: Optional[tuple[int, int]] = None
-    metadata: Mapping[str, str] = field(default_factory=dict)
+    metadata: Mapping[str, Optional[str]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -104,9 +104,16 @@ class MappingRecord:
     cost_usd: Optional[float] = None
     latency_ms: Optional[float] = None
     reason_code: Optional[str] = None
-    cost_usd: Optional[float] = None
-    latency_ms: Optional[float] = None
-    reason_code: Optional[str] = None
+
+
+@dataclass(slots=True)
+class MappingReviewQueueEntry:
+    """Represents a deferred mapping awaiting human review."""
+
+    item: MappingItem
+    reason: str
+    reason_code: Optional[str]
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(slots=True)

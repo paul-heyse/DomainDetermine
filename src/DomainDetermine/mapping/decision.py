@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Callable, Optional, Sequence
+from typing import Callable, Mapping, Optional, Sequence
 
 from .models import Candidate, CandidateLogEntry, DecisionMethod, MappingItem, MappingRecord
 
@@ -74,6 +74,7 @@ class LLMDecisionEngine(DecisionEngine):
     model_ref: str
     llm_callable: Callable[[str], dict[str, str]]
     human_review_queue: list[MappingItem] = field(default_factory=list)
+    review_reason_codes: Mapping[str, str] = field(default_factory=dict)
     confidence_threshold: float = 0.0
     tie_threshold: float = 0.05
 
@@ -94,12 +95,12 @@ class LLMDecisionEngine(DecisionEngine):
         if selected_id not in {candidate.concept_id for candidate in ranked_candidates}:
             return None
         if confidence < self.confidence_threshold:
-            self.human_review_queue.append(mapping_item)
+            self._enqueue_for_review(mapping_item, reason="confidence_below_threshold")
             return None
         if self.allow_ties_for_review and len(ranked_candidates) >= 2:
             delta = abs(ranked_candidates[0].score - ranked_candidates[1].score)
             if delta <= self.tie_threshold:
-                self.human_review_queue.append(mapping_item)
+                self._enqueue_for_review(mapping_item, reason="score_tie")
                 return None
         evidence_payload = deliberation.get("evidence", [])
         if isinstance(evidence_payload, str):
@@ -116,6 +117,8 @@ class LLMDecisionEngine(DecisionEngine):
         latency_ms = float(deliberation.get("latency_ms", 0.0)) if "latency_ms" in deliberation else None
         cost_usd = float(deliberation.get("cost_usd", 0.0)) if "cost_usd" in deliberation else None
         reason_code = deliberation.get("reason_code")
+        if not reason_code and confidence < self.confidence_threshold:
+            reason_code = self.review_reason_codes.get("confidence_below_threshold")
         record = MappingRecord(
             mapping_item=mapping_item,
             concept_id=selected_id,
@@ -144,4 +147,9 @@ class LLMDecisionEngine(DecisionEngine):
         }
         response = self.llm_callable(json.dumps(payload))
         return response
+
+    def _enqueue_for_review(self, item: MappingItem, *, reason: str) -> None:
+        self.human_review_queue.append(item)
+        reason_code = self.review_reason_codes.get(reason, reason)
+        item.metadata = {**item.metadata, "review_reason": reason, "review_reason_code": reason_code}
 

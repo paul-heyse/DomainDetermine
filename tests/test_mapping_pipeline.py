@@ -16,6 +16,7 @@ from DomainDetermine.mapping import (
     MappingContext,
     MappingItem,
     MappingPipeline,
+    MappingReviewQueueEntry,
     MappingReport,
     MappingStorage,
     TextNormalizer,
@@ -152,6 +153,19 @@ def test_mapping_report(tmp_path: Path, pipeline: MappingPipeline) -> None:
     summary_path = report.write_summary(batch)
     data = json.loads(summary_path.read_text())
     assert data["records"] == 1
+
+
+def test_pipeline_defers_to_review_queue(pipeline: MappingPipeline) -> None:
+    pipeline.decision_engine.confidence_threshold = 0.99
+    pipeline.decision_engine.review_reason_codes = {"confidence_below_threshold": "RR01"}
+    item = MappingItem("Ambiguous topic", MappingContext())
+    result = pipeline.run([item])
+    assert not result.records
+    assert pipeline.review_queue
+    entry = pipeline.review_queue[-1]
+    assert isinstance(entry, MappingReviewQueueEntry)
+    assert entry.reason_code == "RR01"
+    assert entry.reason == "confidence_below_threshold"
 
 
 def test_prompt_runtime_manager_loads_mapping_template() -> None:

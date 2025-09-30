@@ -26,6 +26,8 @@ class CalibrationResult:
     resolved: int
     correct: int
     metrics: Mapping[str, float]
+    precision_at_1: float
+    recall_at_k: float
 
     @property
     def accuracy(self) -> float:
@@ -54,14 +56,20 @@ class MappingCalibrationSuite:
                 correct += 1
         total = len(example_list)
         resolved = len(resolved_map)
+        precision_at_1 = correct / resolved if resolved else 0.0
+        recall_at_k = correct / total if total else 0.0
         metrics = dict(batch.metrics)
-        metrics["accuracy"] = correct / total if total else 0.0
+        metrics["accuracy"] = recall_at_k
         metrics.setdefault("resolution_rate", resolved / total if total else 0.0)
+        metrics["precision_at_1"] = precision_at_1
+        metrics["recall_at_k"] = recall_at_k
         return CalibrationResult(
             total=total,
             resolved=resolved,
             correct=correct,
             metrics=metrics,
+            precision_at_1=precision_at_1,
+            recall_at_k=recall_at_k,
         )
 
     @staticmethod

@@ -7,6 +7,8 @@ from DomainDetermine.governance.event_log import (
     GovernanceEventLog,
     GovernanceEventType,
     log_llm_observability_alert,
+    log_mapping_batch_published,
+    log_mapping_review_required,
 )
 from DomainDetermine.governance.models import ArtifactMetadata, ArtifactRef, Role, TenantPolicy
 from DomainDetermine.governance.rbac import AccessDecision, AccessManager, LicensePolicy
@@ -34,6 +36,8 @@ __all__ = [
     "GovernanceEventLog",
     "GovernanceEventType",
     "log_llm_observability_alert",
+    "log_mapping_batch_published",
+    "log_mapping_review_required",
     "GovernanceRegistry",
     "GovernanceTelemetry",
     "RegistryConfig",

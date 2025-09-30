@@ -1,37 +1,25 @@
 # Mapping & Crosswalks Guide (Module 3)
 
-Mapping converts free-text topics or document spans into canonical concept IDs and captures reviewer decisions. While the current implementation is a foundation, it draws a direct path to the Module 3 expectations in `AI-collaboration.md`.
+Mapping converts free-text topics or document spans into canonical concept IDs and captures reviewer decisions. While the current implementation is a foundation, it now tracks end-to-end provenance (telemetry + governance manifests) and aligns to the Module 3 expectations in `AI-collaboration.md`.
 
 ## Pipeline Overview
 
-1. **Candidate Generation** (`mapping/candidate_generation.py`) – Uses simple lexical heuristics (string similarity, alias lookup) to propose potential concept IDs for an input phrase.
-2. **Scoring** (`mapping/scoring.py`) – Combines lexical scores with optional policy weights to surface the best candidates.
-3. **Decision Layer** (`mapping/decision.py`) – Interfaces designed for human-in-the-loop signoff. Tracks decision rationale and attaches evidence placeholders.
-4. **Storage/Repository** (`mapping/repository.py`, `storage.py`) – Abstract persistence layer; currently in-memory with TODOs to connect to a real store.
-5. **Pipeline Orchestration** (`mapping/pipeline.py`) – Coordinates the above steps and emits `MappingDecision` records.
+1. **Candidate Generation** (`mapping/candidate_generation.py`) – Uses lexical heuristics and context filters sourced from Module 1 snapshots.
+2. **Scoring** (`mapping/scoring.py`) – Calibrates candidate scores with softmax weighting and optional cross-encoder reranking.
+3. **Decision Layer** (`mapping/decision.py`) – LLM-gated adjudication with structured reason codes; items falling below thresholds are routed to human review queues.
+4. **Storage/Repository** (`mapping/repository.py`, `storage.py`) – Persists mappings, candidate logs, and crosswalk proposals to Parquet + DuckDB with latency/cost metadata.
+5. **Pipeline Orchestration** (`mapping/pipeline.py`) – Coordinates all stages, emits governance-ready manifests via `MappingManifestWriter`, and forwards metrics through `MappingTelemetry`.
 
-## Evidence & Governance
+## Evidence, Telemetry & Governance
 
-- **Evidence fields** exist in `mapping/models.py` but are optional; future work should make them mandatory and attach citations to satisfy the handbook.
-- **Confidence Calibration** is stubbed—`scoring.py` provides deterministic scores but lacks histogram-based calibration.
-- **Audit Trail**: `mapping/reporting.py` seeds a reporting structure for precision/recall metrics and ambiguous-case tracking.
+- **Evidence capture** is stored per record (`evidence_quotes`, `reason_code`, LLM rationale payloads).
+- **Telemetry** (`mapping/telemetry.py`) tracks precision@1, recall@k, cost, deferral counts, and forwards batch metrics to readiness dashboards or governance event logs when configured.
+- **Manifests** (`mapping/persistence.py`) write `mapping_manifest_<run>.json` with metrics, candidate logs, and crosswalk proposals. Outputs are append-only and include latency, cost, and coverage plan identifiers.
+- **Governance Integration**: When `MappingTelemetry` is supplied with a `GovernanceEventLog` + `ArtifactRef`, batch metrics raise `MAPPING_BATCH_PUBLISHED` events for auditability.
 
-## Gaps vs. Handbook
+## Human-in-the-Loop Review
 
-| Requirement | Current Status |
-| --- | --- |
-| Evidence quotes + rationale | **Partial** – Fields exist but enforcement missing.
-| LLM gate for disambiguation | **Missing** – No LLM integration; decisions are purely heuristic.
-| Crosswalk maintenance across schemes | **Missing** – `crosswalk.py` outlines structure but no multi-scheme logic yet.
-| Throughput targets | **Not measured** – Telemetry hooks exist but no metrics emitted.
-
-## Next Steps
-
-- Enforce evidence capture at the data model level and integrate with Reviewer Workbench (Module 8).
-- Plug in vector/embedding similarity for better recall while keeping human approval steps.
-- Extend `crosswalk.py` to import existing mappings (LOINC ↔ SNOMED, etc.) and expose diff reports as per governance requirements.
-
-# Module 3 – Mapping & Crosswalks
+Deferred items accumulate in the decision engine’s review queue with structured reason codes (confidence thresholds, score ties, policy overrides). Reviewer tooling (Module 8) can consume the queued `MappingItem.metadata` fields (`review_reason`, `review_reason_code`) for triage.
 
 ## Calibration Suite
 
@@ -46,8 +34,10 @@ result = suite.run(examples)
 print(result.metrics["accuracy"], result.metrics["resolution_rate"])
 ```
 
-The suite produces `accuracy`, `resolution_rate`, and reuses the pipeline’s intrinsic metrics. Feed these into governance checks as part of your release gates.
+The suite produces `accuracy`, `resolution_rate`, and the pipeline’s intrinsic metrics. Feed these into governance checks as part of your release gates.
 
-## Guardrails
+## Guardrails & Crosswalks
 
-`DomainDetermine.mapping.policy.MappingPolicyGuardrails` centralizes lexical overlap, edit-distance, and language checks. Configure thresholds with `MappingGuardrailConfig` to mirror the spec’s deterministic fallback requirements and pass a guardrail instance into pipelines or reviewer tools where needed.
+`DomainDetermine.mapping.policy.MappingPolicyGuardrails` centralizes lexical overlap, edit-distance, and language checks. Configure thresholds with `MappingGuardrailConfig` to mirror deterministic fallback requirements.
+
+`mapping/crosswalk.py` proposes cross-scheme alignments (e.g., SNOMED ↔ ICD) using lexical overlap thresholds and attaches LLM rationales. Persisted crosswalks remain pending until governance approves, satisfying the “Artifact Persistence & Crosswalk Workflow” requirement in the spec. Calibration samples live under `docs/samples/mapping_calibration_samples.csv` to seed gold sets.

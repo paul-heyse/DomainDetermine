@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(
     reason="Coverage planner tests are expensive; set RUN_COVERAGE_PLANNER_TESTS=1 to enable",
 )
 
-from DomainDetermine.coverage_planner import (
+from DomainDetermine.coverage_planner import (  # noqa: E402
     ConceptFrameRecord,
     ConstraintConfig,
     CoveragePlanner,
@@ -22,7 +22,9 @@ from DomainDetermine.coverage_planner import (
     PolicyConstraint,
     RiskTier,
 )
-from DomainDetermine.coverage_planner.combinatorics import generate_pairwise_combinations
+from DomainDetermine.coverage_planner.combinatorics import (  # noqa: E402
+    generate_pairwise_combinations,
+)
 
 
 @pytest.fixture

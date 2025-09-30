@@ -1,0 +1,4 @@
+text,expected_concept_id,domain
+"Competition law","EV:1","competition"
+"Antitrust policy","EV:1","competition"
+"Consumer protection","EV:2","consumer"

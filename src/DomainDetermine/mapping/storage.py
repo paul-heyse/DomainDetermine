@@ -93,19 +93,6 @@ class MappingStorage:
         self._write_parquet(batch.crosswalk_proposals, "crosswalk_proposals.parquet")
         self._write_metrics(batch)
         self._append_duckdb(batch)
-        if self.manifest_log_path:
-            manifest_path = self.output_root / "mapping_manifest.json"
-            payload = {
-                "manifest_path": str(manifest_path),
-                "records": len(batch.records),
-                "candidate_logs": len(batch.candidate_logs),
-                "crosswalk_proposals": len(batch.crosswalk_proposals),
-            }
-            log_entry = json.dumps(payload, sort_keys=True)
-            self.manifest_log_path.parent.mkdir(parents=True, exist_ok=True)
-            with self.manifest_log_path.open("a", encoding="utf-8") as handle:
-                handle.write(log_entry)
-                handle.write("\n")
 
     def _write_parquet(self, objects: Iterable[object], filename: str) -> None:
         if pa is None or pq is None:

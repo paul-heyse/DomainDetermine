@@ -1,7 +1,11 @@
 import importlib
 
 cli_app = importlib.import_module("DomainDetermine.cli.app")
-from DomainDetermine.cli.profiles import ProfileManifest, ProfileStep, validate_profile
+from DomainDetermine.cli.profiles import (  # noqa: E402
+    ProfileManifest,
+    ProfileStep,
+    validate_profile,
+)
 
 
 def _resolver(verb: str):

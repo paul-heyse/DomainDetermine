@@ -96,3 +96,5 @@ def test_calibration_suite_reports_accuracy(pipeline: MappingPipeline) -> None:
     assert result.correct == 1
     assert result.accuracy == pytest.approx(1.0)
     assert result.metrics["resolution_rate"] == pytest.approx(1.0)
+    assert result.precision_at_1 == pytest.approx(1.0)
+    assert result.recall_at_k == pytest.approx(1.0)
