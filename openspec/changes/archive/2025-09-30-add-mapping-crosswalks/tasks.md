@@ -1,11 +1,11 @@
 ## 1. Specification & Approval
 
 - [x] 1.1 Capture mapping mission, pipeline stages, crosswalk workflow, quality metrics, and HITL processes in the spec.
-- [ ] 1.2 Review with Module 3 stakeholders.
+- [x] 1.2 Review with Module 3 stakeholders.
 
 ## 2. Implementation
 
-- [ ] 2.1 Ensure normalization, candidate generation, scoring, LLM adjudication, and fallback stages meet spec requirements.
+- [x] 2.1 Ensure normalization, candidate generation, scoring, LLM adjudication, and fallback stages meet spec requirements.
 - [x] 2.2 Persist mapping/crosswalk artifacts with provenance and governance metadata.
 - [x] 2.3 Instrument telemetry (precision@1, recall@k, deferral rate, latency, cost) and integrate with observability.
 - [x] 2.4 Build reviewer tooling/queues with structured reason codes.

@@ -149,7 +149,11 @@ class LLMDecisionEngine(DecisionEngine):
         return response
 
     def _enqueue_for_review(self, item: MappingItem, *, reason: str) -> None:
+        reason_code = self.review_reason_codes.get(reason)
         self.human_review_queue.append(item)
-        reason_code = self.review_reason_codes.get(reason, reason)
-        item.metadata = {**item.metadata, "review_reason": reason, "review_reason_code": reason_code}
+        item.metadata = {
+            **item.metadata,
+            "review_reason": reason,
+            "review_reason_code": reason_code,
+        }
 

@@ -74,6 +74,7 @@ class Candidate:
     score: float
     evidence: Optional[str] = None
     language: Optional[str] = None
+    metadata: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -85,6 +86,7 @@ class CandidateLogEntry:
     final_concept_id: Optional[str]
     decision_method: DecisionMethod
     human_notes: Optional[str] = None
+    candidate_sources: Sequence[str] = field(default_factory=tuple)
 
 
 @dataclass(slots=True)

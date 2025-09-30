@@ -121,7 +121,14 @@ class MappingStorage:
 
     def _write_metrics(self, batch: MappingBatchResult) -> None:
         path = self.output_root / "metrics.json"
-        path.write_text(json.dumps(batch.metrics, indent=2, sort_keys=True))
+        payload = dict(batch.metrics)
+        total = payload.get("items_total", 0.0)
+        resolved = payload.get("items_resolved", 0.0)
+        payload.setdefault("resolution_rate", resolved / total if total else 0.0)
+        payload["records"] = len(batch.records)
+        payload["candidate_logs"] = len(batch.candidate_logs)
+        payload["crosswalk_proposals"] = len(batch.crosswalk_proposals)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True))
 
     def _append_duckdb(self, batch: MappingBatchResult) -> None:
         for record in batch.records:

@@ -39,6 +39,14 @@ class CandidateScorer:
     def rerank(self, candidates: Sequence[Candidate], cross_encoder_scores: Sequence[float]) -> tuple[Candidate, ...]:
         if not candidates:
             return tuple()
+        if not cross_encoder_scores:
+            return tuple(candidates)
+        if len(cross_encoder_scores) < len(candidates):
+            pad_value = cross_encoder_scores[-1] if cross_encoder_scores else 0.0
+            cross_encoder_scores = tuple(
+                list(cross_encoder_scores)
+                + [pad_value for _ in range(len(candidates) - len(cross_encoder_scores))]
+            )
         adjusted = []
         for candidate, ce_score in zip(candidates, cross_encoder_scores, strict=False):
             weight = 0.7
